@@ -27,7 +27,7 @@ export function updateGel(Matter,balls,pairs,dt) {
     const g=body.plugin.gel,otherGel=other.plugin.gel;
     const impact=Math.max(0,(g.vx-(otherGel?.vx||0))*nx+(g.vy-(otherGel?.vy||0))*ny);
     const load=other.isStatic?1:Math.min(4,other.mass/body.mass);
-    const pressure=clamp(.028+g.radius*.0011+load*.021+impact*.010,0,.28);
+    const pressure=clamp(.045+g.radius*.0017+load*.038+impact*.016,0,.42);
     g.contacts.push({nx,ny,pressure,impact});
   }
 
@@ -46,13 +46,13 @@ export function updateGel(Matter,balls,pairs,dt) {
         // A landing makes an immediate elastic dent, followed by a damped rebound.
         if(c.impact>2){
           const axial=Math.abs(dx*c.nx+dy*c.ny);
-          g.speeds[i]-=Math.min(10,c.impact*.95)*axial**2;
+          g.speeds[i]-=Math.min(15,c.impact*1.45)*axial**2;
         }
       }
-      const target=1-Math.min(.30,dent);
-      g.speeds[i]+=(target-g.radii[i])*(280/(1+g.radius*.004))*h;
-      g.speeds[i]*=Math.exp(-16*h);
-      g.radii[i]=clamp(g.radii[i]+g.speeds[i]*h,.56,1.16);
+      const target=1-Math.min(.44,dent);
+      g.speeds[i]+=(target-g.radii[i])*(190/(1+g.radius*.004))*h;
+      g.speeds[i]*=Math.exp(-10*h);
+      g.radii[i]=clamp(g.radii[i]+g.speeds[i]*h,.40,1.24);
       if(!g.last||Math.abs(g.radii[i]-g.last[i])>.0004)changed=true;
     }
     if(!changed)continue;

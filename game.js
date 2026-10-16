@@ -1,7 +1,10 @@
 import { MergeGame, BALLS, WIDTH, HEIGHT, STEP, DROP_Y } from './core.js';
+import { DiscoveryIntro, drawDiscovery } from './discovery.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game'), ctx = canvas.getContext('2d');
+const introCanvas=$('discovery-art'),introContext=introCanvas.getContext('2d');
+const discovery=new DiscoveryIntro();
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const SAVE_KEY = 'ball-guys-merge-v1';
 const number = n => Math.round(n).toLocaleString('ru-RU');
@@ -11,11 +14,11 @@ const stats = {
   best: Number.isFinite(saved?.best) && saved.best >= 0 ? saved.best : 0,
   bank: Number.isFinite(saved?.bank) && saved.bank >= 0 ? saved.bank : 0,
   lastScore: Number.isFinite(saved?.lastScore) && saved.lastScore >= 0 ? saved.lastScore : null,
-  discovered: Number.isInteger(saved?.discovered) ? Math.max(0,Math.min(10,saved.discovered)) : 0,
+  discovered: Number.isInteger(saved?.discovered) ? Math.max(3,Math.min(10,saved.discovered)) : 3,
   sound: saved?.sound === true,
 };
 let paused = false, targeting = false, pointer = null, audioContext, lastToast = 0;
-let installPrompt = null, discovery = null;
+let installPrompt = null;
 let particles = [], labels = [], lastFrame = performance.now(), accumulator = 0, lastSave = 0, uiDirty = true;
 const game = new MergeGame(window.Matter, { onEvent });
 const restored = game.restore(saved?.run);
@@ -74,13 +77,16 @@ function onEvent(event) {
     if (event.tier > stats.discovered && event.tier <= 10) {
       stats.discovered = event.tier;
       updateCollection();
-      if(event.tier>=4){discovery={tier:event.tier,start:performance.now()};game.cooldown=Math.max(game.cooldown,1400);}
+    }
+    if(event.discovered&&discovery.enqueue(event.tier)){
+      pointer=null;setTarget(false);syncDiscovery();
     }
     if(event.tier===11) toast('Космическое слияние!');
   } else if (event.type === 'drop') {
     $('first-hint').hidden = true;
     sound('drop');
   } else if (event.type === 'finished') {
+    discovery.reset();syncDiscovery();
     stats.best = Math.max(stats.best,event.score);
     stats.bank += event.score;
     stats.lastScore = event.score;
@@ -199,14 +205,14 @@ function draw(time,delta) {
   }
   ctx.globalAlpha=1;labels=labels.filter(p=>p.life>0);
   if(time-lastToast>2100)$('toast').classList.remove('show');
-  if(discovery){
-    if(time-discovery.start>1500){discovery=null;return;}
-    ctx.fillStyle='#0008';ctx.fillRect(0,0,WIDTH,HEIGHT);
-    ctx.textAlign='center';ctx.font='700 35px Ball';ctx.lineWidth=6;ctx.strokeStyle='#000';ctx.fillStyle='#fff36b';
-    ctx.strokeText('Новый шарик открыт!',250,385);ctx.fillText('Новый шарик открыт!',250,385);
-    ballArt(ctx,250,535,78,discovery.tier,0,0,1);
-    ctx.font='700 50px Ball';ctx.fillStyle='#ffdf20';ctx.fillText('★',110,590);ctx.fillText('✦',367,465);
-  }
+  introContext.setTransform(ratio,0,0,ratio,0,0);
+  introContext.clearRect(0,0,WIDTH,HEIGHT);
+  if(discovery.current)drawDiscovery(introContext,discovery.current,ballArt,reducedMotion);
+}
+
+function syncDiscovery() {
+  $('discovery-overlay').hidden=!discovery.current;
+  $('discovery-label').textContent=discovery.current?`Новый шарик открыт: ${BALLS[discovery.current.tier].name}`:'';
 }
 
 function updateUI() {
@@ -259,7 +265,7 @@ function showModal(title,body,actions,icon='✦') {
 }
 
 function newGame() {
-  game.reset();setTarget(false);particles=[];labels=[];discovery=null;paused=false;accumulator=0;
+  game.reset();setTarget(false);particles=[];labels=[];discovery.reset();syncDiscovery();paused=false;accumulator=0;
   uiDirty=true;save();canvas.focus({preventScroll:true});
 }
 
@@ -310,25 +316,25 @@ $('restart').addEventListener('click',()=>{
   showModal('Начать с чистого стакана?','Текущие очки будут потеряны.<br>Твой рекорд останется.',[{label:'Начать заново',run:newGame},{label:'Продолжить эту партию',secondary:true}],'↻');
 });
 $('sound').addEventListener('click',()=>{stats.sound=!stats.sound;unlockAudio();sound('merge',3);uiDirty=true;save();});
-for(const kind of ['swap','shake','lift'])$(kind).addEventListener('click',()=>{if(paused)return;unlockAudio();setTarget(false);if(game.usePower(kind)){uiDirty=true;save();toast({swap:'Шарики поменялись!',shake:'Встряхнули!',lift:'Вверх!'}[kind]);}});
-$('sniper').addEventListener('click',()=>{if(!paused&&game.powers.sniper&&game.balls.length)setTarget(!targeting);});
+for(const kind of ['swap','shake','lift'])$(kind).addEventListener('click',()=>{if(paused||discovery.current)return;unlockAudio();setTarget(false);if(game.usePower(kind)){uiDirty=true;save();toast({swap:'Шарики поменялись!',shake:'Встряхнули!',lift:'Вверх!'}[kind]);}});
+$('sniper').addEventListener('click',()=>{if(!paused&&!discovery.current&&game.powers.sniper&&game.balls.length)setTarget(!targeting);});
 $('cancel-target').addEventListener('click',()=>setTarget(false));
 
 function point(event) {const rect=canvas.getBoundingClientRect();return {x:(event.clientX-rect.left)/rect.width*WIDTH,y:(event.clientY-rect.top)/rect.height*HEIGHT};}
 canvas.addEventListener('pointerdown',event=>{
-  if(paused||game.state!=='playing'||event.button!==0||pointer!==null)return;
+  if(paused||discovery.current||game.state!=='playing'||event.button!==0||pointer!==null)return;
   event.preventDefault();unlockAudio();canvas.focus({preventScroll:true});pointer=event.pointerId;
   canvas.setPointerCapture(event.pointerId);
   if(!targeting)game.setAim(point(event).x);
 });
 canvas.addEventListener('pointermove',event=>{
-  if(paused||targeting||game.state!=='playing')return;
+  if(paused||discovery.current||targeting||game.state!=='playing')return;
   if(event.pointerType==='mouse'||event.pointerId===pointer)game.setAim(point(event).x);
 });
 canvas.addEventListener('pointerup',event=>{
   if(event.pointerId!==pointer)return;pointer=null;
   if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);
-  if(paused||game.state!=='playing')return;
+  if(paused||discovery.current||game.state!=='playing')return;
   const p=point(event);
   if(p.x<0||p.x>WIDTH||p.y<0||p.y>HEIGHT)return;
   if(targeting){
@@ -342,7 +348,7 @@ document.addEventListener('keydown',event=>{
   if($('modal').open)return;
   if(event.key==='Escape'){setTarget(false);return;}
   if(event.code==='KeyP'){showPause();return;}
-  if(paused||game.state!=='playing'||event.target.closest?.('button,a'))return;
+  if(paused||discovery.current||game.state!=='playing'||event.target.closest?.('button,a'))return;
   if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();game.setAim(game.aim+(event.key==='ArrowLeft'?-12:12));}
   if(event.code==='Space'&&!event.repeat){event.preventDefault();unlockAudio();if(!targeting&&game.drop()){uiDirty=true;save();}}
 });
@@ -355,12 +361,16 @@ window.addEventListener('pagehide',save);
 function resize() {
   const rect=canvas.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio||1,2);
   canvas.width=Math.round(rect.width*dpr);canvas.height=Math.round(canvas.width*HEIGHT/WIDTH);
+  introCanvas.width=canvas.width;introCanvas.height=canvas.height;
 }
 new ResizeObserver(resize).observe(canvas);
 
 function frame(time) {
   const delta=Math.min(time-lastFrame,50);lastFrame=time;
   if(!paused&&!document.hidden){
+    const previousIntro=discovery.current;
+    discovery.step(delta);
+    if(previousIntro!==discovery.current)syncDiscovery();
     accumulator+=delta;
     while(accumulator>=STEP){game.step(STEP);accumulator-=STEP;}
   } else accumulator=0;

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { MergeGame, BALLS, STEP } from '../core.js';
+import { MergeGame, BALLS, STEP, WIDTH } from '../core.js';
 
 const sandbox = { module: { exports: {} }, exports: {}, console };
 vm.runInNewContext(fs.readFileSync(new URL('../vendor/matter.min.js',import.meta.url),'utf8'),sandbox);
@@ -47,6 +47,23 @@ test('highest tier merge clears space without creating an invalid tier',()=>{
 test('drop cooldown prevents duplicate touch drops',()=>{
   const g=make();assert.equal(g.drop(),true);assert.equal(g.drop(),false);
   advance(g,900);assert.equal(g.drop(),true);assert.equal(g.drops,2);
+});
+
+test('aim and drop can reach either screen edge without the cup pulling them back',()=>{
+  for(const x of [0,WIDTH]){
+    const g=make();g.setAim(x);assert.equal(g.aim,x);
+    g.usePower('swap');assert.equal(g.aim,x);
+    assert.equal(g.drop(),true);assert.equal(g.balls[0].position.x,x);
+    advance(g,2200);assert.equal(g.state,'finished','a deliberate outside drop must fall past the cup');
+  }
+});
+
+test('first large discovery is signalled once per tier in each new run',()=>{
+  const events=[];const g=new MergeGame(Matter,{onEvent:e=>events.push(e)});
+  assert.equal(g.maxTier,3);
+  const orange=()=>g.merge(g.addBall(3,200,500),g.addBall(3,290,500));
+  orange();orange();assert.equal(events[0].discovered,true);assert.equal(events[1].discovered,false);
+  g.reset();orange();assert.equal(events[2].discovered,true);
 });
 
 test('newly dropped balls above the rim get time to fall',()=>{
@@ -148,7 +165,7 @@ test('a green drop matches the recording flight time and has a soft landing',()=
     if(touchdown!==null)flattening=Math.max(flattening,(b.bounds.max.x-b.bounds.min.x)/(b.bounds.max.y-b.bounds.min.y));
   }
   assert.ok(touchdown>1400&&touchdown<1700,`flight time ${touchdown}ms`);
-  assert.ok(flattening>1.25&&flattening<1.7,`impact squash ${flattening}`);
+  assert.ok(flattening>1.8&&flattening<2.8,`impact squash ${flattening}`);
 });
 
 test('a supported ball may protrude above the rim without losing',()=>{

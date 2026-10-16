@@ -43,7 +43,8 @@ export class MergeGame {
     this.combo = 0;
     this.comboPoints = 0;
     this.lastMerge = -10000;
-    this.maxTier = 0;
+    // The four colours available to drop are already unlocked.
+    this.maxTier = 3;
     this.current = this.roll();
     this.next = this.roll();
     this.aim = WIDTH / 2;
@@ -76,8 +77,8 @@ export class MergeGame {
   }
 
   setAim(x) {
-    const c = this.cup, r = BALLS[this.current].radius;
-    this.aim = clamp(x, c.left+r+10, c.right-r-10);
+    // The cup is a physical obstacle, never an invisible limit on the player's aim.
+    this.aim = clamp(x, 0, WIDTH);
   }
 
   addBall(tier, x, y, options = {}) {
