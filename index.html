@@ -26,15 +26,13 @@
     <symbol id="i-lift" viewBox="0 0 24 24"><path d="M12 21V3m-3 3 3-3 3 3M7 18 3 6m-1 4 1-4 4 2m10 10 4-12m-4 2 4-2 1 4"/></symbol>
     <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v5m0 10v5M2 12h5m10 0h5"/><circle cx="12" cy="12" r="1"/></symbol>
     <symbol id="i-install" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M5 16v5h14v-5"/></symbol>
-    <symbol id="i-checkout" viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 1 7M4 4v6h6"/><path d="m12 7-4 4 4 6 4-6-4-4Z"/></symbol>
   </defs></svg>
   <main class="game-card" aria-label="Ball Guys — наполни стакан">
     <div class="stage-wrap"><canvas id="game" width="1000" height="2000" tabindex="0" role="application" aria-label="Игровое поле. Стрелки — прицелиться, пробел — бросить. На телефоне коснись и отпусти."></canvas></div>
-    <div class="scorebar outlined"><div>Счёт: <strong id="score">0</strong></div><div>Рекорд: <strong id="best">0</strong></div></div>
+    <div class="scorebar outlined"><div>Счёт: <strong id="score">0</strong></div><div>Рекорд: <strong id="best">0</strong></div><div id="last-result" class="last-result" hidden>Прошлая: <strong id="last-score">0</strong></div></div>
     <div class="game-toolbar"><span class="no-ads">Без рекламы</span><div class="toolbar-actions"><button id="sound" class="icon-button" aria-label="Включить звук" aria-pressed="false"><svg><use href="#i-sound"/></svg><span class="mute-slash"></span></button><button id="pause" class="icon-button" aria-label="Пауза"><svg><use href="#i-pause"/></svg></button><button id="restart" class="icon-button" aria-label="Начать заново"><svg><use href="#i-reset"/></svg></button></div></div>
     <button id="install" class="install-button blue-tile"><svg><use href="#i-install"/></svg><span class="outlined">На экран Домой</span></button>
     <div class="next blue-tile"><canvas id="next-ball" width="108" height="108" aria-label="Следующий шарик"></canvas><span class="outlined">Следующий</span></div>
-    <button id="checkout" class="checkout" disabled><svg><use href="#i-checkout"/></svg><span class="outlined">Забрать очки</span></button>
     <div id="combo" class="combo outlined" hidden></div>
     <div id="toast" class="toast outlined" aria-live="polite"></div>
     <div id="target-hint" class="target-hint" hidden>Выбери шарик <button id="cancel-target" aria-label="Отменить удаление">×</button></div>

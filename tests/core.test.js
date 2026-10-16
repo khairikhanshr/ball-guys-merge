@@ -51,20 +51,43 @@ test('drop cooldown prevents duplicate touch drops',()=>{
 
 test('newly dropped balls above the rim get time to fall',()=>{
   const g=make();g.drop();advance(g,1200);assert.equal(g.state,'playing');
-  assert.equal(g.danger,0);assert.ok(g.balls[0].position.y>g.cup.top);
+  assert.ok(g.balls[0].position.y>g.cup.top);
 });
 
-test('persistent overflow ends the run and prevents cashout',()=>{
+test('a ball entirely above the rim never ends the run just because time passes',()=>{
   const g=make();const ball=g.addBall(0,250,g.cup.top-60,{born:-4000});
-  Matter.Body.setStatic(ball,true);g.score=20;advance(g,2400);
-  assert.equal(g.state,'lost');assert.equal(g.checkout(),null);assert.equal(g.drop(),false);
+  Matter.Body.setStatic(ball,true);advance(g,12000);
+  assert.equal(g.state,'playing');
 });
 
-test('recovering below the rim clears the danger countdown',()=>{
-  const g=make();const ball=g.addBall(0,250,g.cup.top-60,{born:-4000});
-  Matter.Body.setStatic(ball,true);advance(g,1000);assert.ok(g.danger>0);
-  Matter.Body.setPosition(ball,{x:250,y:g.cup.bottom-70});advance(g,500);
-  assert.equal(g.danger,0);assert.equal(g.state,'playing');
+test('one ball falling outside either rim ends the run immediately with the full score',()=>{
+  for(const side of ['left','right']){
+    const events=[];const g=new MergeGame(Matter,{onEvent:e=>events.push(e)});g.score=290;
+    const b=g.addBall(0,g.cup[side]+(side==='left'?-35:35),g.cup.top+30);
+    Matter.Body.setVelocity(b,{x:0,y:2});g.step();
+    assert.equal(g.state,'finished');assert.equal(g.score,290);
+    assert.deepEqual(events,[{type:'finished',score:290}]);assert.equal(g.drop(),false);
+  }
+});
+
+test('airborne balls outside the mouth can return until they fall below the rim',()=>{
+  const g=make();const b=g.addBall(0,g.cup.left-40,g.cup.top-60);
+  Matter.Body.setStatic(b,true);advance(g,6000);assert.equal(g.state,'playing');
+  Matter.Body.setPosition(b,{x:g.cup.left-40,y:g.cup.top+2});g.step();
+  assert.equal(g.state,'finished');
+});
+
+test('the sloping outer walls and the bottom also detect a spill',()=>{
+  for(const position of [{x:90,y:700},{x:410,y:700},{x:250,y:815}]){
+    const g=make();g.addBall(0,position.x,position.y);g.step();
+    assert.equal(g.state,'finished');
+  }
+});
+
+test('a fallen ball cannot be rescued by a simultaneous merge outside the cup',()=>{
+  const g=make();g.score=40;
+  g.addBall(0,25,620,{born:-1000});g.addBall(0,30,620,{born:-1000});g.step();
+  assert.equal(g.state,'finished');assert.equal(g.score,40);assert.equal(g.merges,0);
 });
 
 test('abilities have finite uses and invalid targets do not spend them',()=>{
@@ -77,19 +100,32 @@ test('abilities have finite uses and invalid targets do not spend them',()=>{
   g.usePower('swap');g.usePower('swap');assert.equal(g.usePower('swap'),false);
 });
 
-test('cashout freezes the run and is awarded only once',()=>{
-  const g=make();assert.equal(g.checkout(),null);g.score=87;
-  assert.equal(g.checkout(),87);assert.equal(g.checkout(),null);assert.equal(g.state,'banked');
-  const time=g.time;advance(g,1000);assert.equal(g.time,time);assert.equal(g.usePower('swap'),false);
+test('a spill freezes the run and emits its result exactly once, including a zero score',()=>{
+  for(const score of [0,87]){
+    const results=[];const g=new MergeGame(Matter,{onEvent:e=>results.push(e)});g.score=score;
+    g.addBall(0,25,620);g.addBall(1,475,620);g.step();
+    const time=g.time,positions=g.balls.map(b=>({...b.position}));
+    advance(g,5000);g.checkSpill();g.checkSpill();
+    assert.equal(g.time,time);assert.deepEqual(g.balls.map(b=>({...b.position})),positions);
+    assert.equal(g.usePower('swap'),false);assert.deepEqual(results,[{type:'finished',score}]);
+    assert.equal(make().restore(g.snapshot()),false,'finished runs must not replay and award points twice');
+  }
 });
 
-test('saved physics, score, powers and danger survive reload',()=>{
+test('saved physics, score and powers survive reload',()=>{
   const g=make();g.drop();advance(g,2100);g.score=42;g.usePower('swap');
-  g.balls[0].plugin.dangerTime=600;
   const saved=JSON.parse(JSON.stringify(g.snapshot()));const restored=make();
   assert.equal(restored.restore(saved),true);
   assert.deepEqual(restored.snapshot(),saved);
   advance(restored,1000);assert.equal(restored.state,'playing');
+});
+
+test('old saves restore without the obsolete overflow countdown',()=>{
+  const g=make();g.addBall(0,250,g.cup.top-60,{born:-4000});
+  const saved=g.snapshot();saved.version=2;saved.balls[0].dangerTime=2190;
+  const restored=make();assert.equal(restored.restore(saved),true);
+  Matter.Body.setStatic(restored.balls[0],true);advance(restored,6000);
+  assert.equal(restored.state,'playing');
 });
 
 test('malformed saved games are rejected without crashing',()=>{
@@ -119,7 +155,7 @@ test('a supported ball may protrude above the rim without losing',()=>{
   const g=make();const b=g.addBall(3,250,g.cup.top+20,{born:-4000});
   Matter.Body.setStatic(b,true);advance(g,6000);
   assert.ok(b.bounds.min.y<g.cup.top);assert.ok(b.bounds.max.y>g.cup.top);
-  assert.equal(g.danger,0);assert.equal(g.state,'playing');
+  assert.equal(g.state,'playing');
 });
 
 test('a merge keeps its contact location and the recorded 40 + 90 + 160 chain totals 290',()=>{

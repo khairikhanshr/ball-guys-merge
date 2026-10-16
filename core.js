@@ -17,6 +17,7 @@ export const WIDTH = 500;
 export const HEIGHT = 1000;
 export const DROP_Y = 292;
 export const STEP = 1000 / 120;
+const WALL_THICKNESS = 15;
 const clamp = (v, a, b) => Math.max(a, Math.min(v, b));
 
 export class MergeGame {
@@ -47,7 +48,6 @@ export class MergeGame {
     this.next = this.roll();
     this.aim = WIDTH / 2;
     this.cooldown = 0;
-    this.danger = 0;
     this.state = 'playing';
     this.powers = { swap: 3, shake: 3, lift: 3, sniper: 3 };
     this.buildCup();
@@ -67,7 +67,7 @@ export class MergeGame {
     const { Bodies, Composite } = this.M;
     this.walls.forEach(b => Composite.remove(this.engine.world, b));
     const c = this.cup;
-    const wall = (x1, y1, x2, y2) => Bodies.rectangle((x1+x2)/2, (y1+y2)/2, Math.hypot(x2-x1,y2-y1)+12, 15,
+    const wall = (x1, y1, x2, y2) => Bodies.rectangle((x1+x2)/2, (y1+y2)/2, Math.hypot(x2-x1,y2-y1)+12, WALL_THICKNESS,
       { isStatic: true, angle: Math.atan2(y2-y1,x2-x1), friction: .22, restitution: .08, label: 'cup' });
     this.walls = [wall(c.left,c.top,c.left+c.inset,c.bottom),
       wall(c.right,c.top,c.right-c.inset,c.bottom),
@@ -87,7 +87,7 @@ export class MergeGame {
       density: .0014, slop: .025, sleepThreshold: 100, label: 'ball',
     });
     body.circleRadius = BALLS[tier].radius;
-    body.plugin = { tier, born: this.time, entered: false, dangerTime: 0, ...options };
+    body.plugin = { tier, born: this.time, ...options };
     body.plugin.gel = createGel(body,BALLS[tier].radius);
     this.M.Composite.add(this.engine.world, body);
     this.balls.push(body);
@@ -144,6 +144,8 @@ export class MergeGame {
     this.cooldown = Math.max(0, this.cooldown-dt);
     prepareGel(this.balls);
     this.M.Engine.update(this.engine, dt);
+    // A spill ends this step before any further merge can consume the fallen ball.
+    if (this.checkSpill()) return;
     // A body may participate in only one merge per physics step.
     const merged = new Set();
     for (const pair of this.engine.pairs.list) {
@@ -154,28 +156,23 @@ export class MergeGame {
       this.merge(a,b);
     }
     updateGel(this.M,this.balls,this.engine.pairs.list,dt);
-    this.checkOverflow(dt);
   }
 
-  checkOverflow(dt) {
+  checkSpill() {
+    if (this.state !== 'playing') return false;
     const c = this.cup;
-    this.danger = 0;
-    for (const b of this.balls) {
-      if (b.bounds.min.y > c.top) b.plugin.entered = true;
-      const outside = b.bounds.max.x < c.left-10 || b.bounds.min.x > c.right+10 || b.bounds.min.y > c.bottom+40;
-      // In the reference, a ball can protrude above the lip while still supported.
-      // Only a fully stranded ball, or a ball that escapes sideways, ends the run.
-      const above = b.bounds.max.y < c.top-8 && Math.abs(b.velocity.y)<.7;
-      const mature = this.time-b.plugin.born > 3000;
-      if (outside) b.plugin.dangerTime += dt*12;
-      else if (above && mature) b.plugin.dangerTime += dt;
-      else b.plugin.dangerTime = Math.max(0,b.plugin.dangerTime-dt*3);
-      this.danger = Math.max(this.danger, b.plugin.dangerTime / 2200);
-    }
-    if (this.danger >= 1) {
-      this.state = 'lost';
-      this.onEvent({ type: 'lost', score: this.score });
-    }
+    const fallen = this.balls.some(b => {
+      const { x, y } = b.position;
+      // Height alone never ends a run: stacks and airborne balls may be above the rim.
+      if (y < c.top) return false;
+      const inset = c.inset * clamp((y-c.top)/(c.bottom-c.top),0,1);
+      const outerWall = WALL_THICKNESS/2;
+      return x < c.left+inset-outerWall || x > c.right-inset+outerWall || y > c.bottom+outerWall;
+    });
+    if (!fallen) return false;
+    this.state = 'finished';
+    this.onEvent({ type: 'finished', score: this.score });
+    return true;
   }
 
   usePower(kind, target) {
@@ -200,40 +197,33 @@ export class MergeGame {
     return true;
   }
 
-  checkout() {
-    if (this.state !== 'playing' || !this.score) return null;
-    this.state = 'banked';
-    this.onEvent({ type: 'banked', score: this.score });
-    return this.score;
-  }
-
   snapshot() {
-    return { version: 2, score: this.score, drops: this.drops, merges: this.merges,
+    return { version: 3, score: this.score, drops: this.drops, merges: this.merges,
       maxTier: this.maxTier, current: this.current, next: this.next, aim: this.aim,
       powers: { ...this.powers }, state: this.state, cooldown: this.cooldown,
       balls: this.balls.map(b => ({ tier: b.plugin.tier, x: b.position.x, y: b.position.y,
         vx: b.velocity.x, vy: b.velocity.y, angle: b.angle, angularVelocity: b.angularVelocity,
-        age: this.time-b.plugin.born, dangerTime: b.plugin.dangerTime, entered: b.plugin.entered })) };
+        age: this.time-b.plugin.born })) };
   }
 
   restore(s) {
     const number = (v,min,max) => Number.isFinite(v) && v >= min && v <= max;
     const tier = v => Number.isInteger(v) && number(v,0,10);
-    if (!s || ![1,2].includes(s.version) || s.state !== 'playing' || !Array.isArray(s.balls) || s.balls.length > 300
+    if (!s || ![1,2,3].includes(s.version) || s.state !== 'playing' || !Array.isArray(s.balls) || s.balls.length > 300
       || !tier(s.maxTier) || !tier(s.current) || !tier(s.next) || !number(s.score,0,1e12)
       || !number(s.drops,0,1e9) || !number(s.merges,0,1e9) || !number(s.aim,0,WIDTH)
       || !number(s.cooldown,0,1500)
       || !['swap','shake','sniper'].every(k=>Number.isInteger(s.powers?.[k]) && number(s.powers[k],0,3))
       || !s.balls.every(b=>tier(b.tier) && number(b.x,-500,1000) && number(b.y,-500,1200)
         && number(b.vx,-100,100) && number(b.vy,-100,100) && number(b.angle,-1e9,1e9)
-        && number(b.angularVelocity,-100,100) && number(b.age,0,1e12) && number(b.dangerTime,0,2300))) return false;
+        && number(b.angularVelocity,-100,100) && number(b.age,0,1e12))) return false;
     this.reset();
     for (const key of ['score','drops','merges','maxTier','current','next','aim','cooldown']) this[key] = s[key];
     this.powers = { ...s.powers, lift:number(s.powers.lift,0,3)?s.powers.lift:3 };
     this.buildCup();
     for (const b of s.balls) {
       const y=s.version===1?this.cup.bottom-(580-b.y)*.8:b.y;
-      const body = this.addBall(b.tier,b.x,y,{ born: -b.age, entered: !!b.entered, dangerTime: b.dangerTime });
+      const body = this.addBall(b.tier,b.x,y,{ born: -b.age });
       this.M.Body.setVelocity(body,{x:b.vx,y:b.vy});
       this.M.Body.setAngle(body,b.angle);
       this.M.Body.setAngularVelocity(body,b.angularVelocity);

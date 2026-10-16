@@ -10,6 +10,7 @@ try { saved = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch { storageAvail
 const stats = {
   best: Number.isFinite(saved?.best) && saved.best >= 0 ? saved.best : 0,
   bank: Number.isFinite(saved?.bank) && saved.bank >= 0 ? saved.bank : 0,
+  lastScore: Number.isFinite(saved?.lastScore) && saved.lastScore >= 0 ? saved.lastScore : null,
   discovered: Number.isInteger(saved?.discovered) ? Math.max(0,Math.min(10,saved.discovered)) : 0,
   sound: saved?.sound === true,
 };
@@ -45,9 +46,9 @@ function sound(kind, tier=0) {
   const osc = audioContext.createOscillator(), gain = audioContext.createGain();
   osc.connect(gain); gain.connect(audioContext.destination);
   osc.type = 'sine';
-  const frequency = kind === 'drop' ? 220 : kind === 'lost' ? 120 : 370 + tier * 54;
+  const frequency = kind === 'drop' ? 220 : kind === 'finished' ? 120 : 370 + tier * 54;
   osc.frequency.setValueAtTime(frequency, now);
-  osc.frequency.exponentialRampToValueAtTime(frequency*(kind==='lost'?.45:1.6),now+.12);
+  osc.frequency.exponentialRampToValueAtTime(frequency*(kind==='finished'?.45:1.6),now+.12);
   gain.gain.setValueAtTime(.0001,now);
   gain.gain.exponentialRampToValueAtTime(.075,now+.01);
   gain.gain.exponentialRampToValueAtTime(.0001,now+.2);
@@ -79,18 +80,14 @@ function onEvent(event) {
   } else if (event.type === 'drop') {
     $('first-hint').hidden = true;
     sound('drop');
-  } else if (event.type === 'lost') {
-    sound('lost');
-    setTarget(false);
-    save();
-    showResult(false);
-  } else if (event.type === 'banked') {
+  } else if (event.type === 'finished') {
     stats.best = Math.max(stats.best,event.score);
     stats.bank += event.score;
+    stats.lastScore = event.score;
     setTarget(false);
     save();
-    sound('merge',8);
-    showResult(true);
+    sound('finished');
+    showResult();
   } else if (event.type === 'power') sound('merge',2);
 }
 
@@ -185,10 +182,6 @@ function draw(time,delta) {
     ctx.beginPath();ctx.moveTo(game.aim,DROP_Y+radius+12);ctx.lineTo(game.aim,c.bottom-15);ctx.stroke();ctx.restore();
     ballArt(ctx,game.aim,DROP_Y,radius,game.current,0,0,1,null,false);
   }
-  if(game.danger>0){
-    ctx.save();ctx.setLineDash([8,7]);ctx.strokeStyle=`rgba(223,93,75,${.35+game.danger*.65})`;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(c.left+13,c.top);ctx.lineTo(c.right-13,c.top);ctx.stroke();ctx.restore();
-    ctx.font='700 19px Ball';ctx.textAlign='center';ctx.fillStyle='#c65b4c';ctx.fillText(`Осторожно! ${Math.max(1,Math.ceil((1-game.danger)*2.2))}`,250,c.top-17);
-  }
   for(const b of game.balls){
     const blink=(time+b.id*827)%4300<150;
     ballArt(ctx,b.position.x,b.position.y,BALLS[b.plugin.tier].radius,b.plugin.tier,b.angle,0,1,b.vertices,true,blink);
@@ -219,7 +212,8 @@ function draw(time,delta) {
 function updateUI() {
   $('score').textContent=number(game.score);
   $('best').textContent=number(stats.best);
-  $('checkout').disabled=!game.score||game.state!=='playing';
+  $('last-result').hidden=stats.lastScore===null;
+  $('last-score').textContent=number(stats.lastScore??0);
   for(const kind of ['swap','shake','lift','sniper']){
     $(kind).querySelector('b').textContent=game.powers[kind];
     $(kind).disabled=!game.powers[kind]||game.state!=='playing'||(kind!=='swap'&&!game.balls.length);
@@ -269,14 +263,13 @@ function newGame() {
   uiDirty=true;save();canvas.focus({preventScroll:true});
 }
 
-function showResult(banked) {
-  const text=banked?'Очки в копилке!':'Стакан переполнен';
-  const body=`<div class="result-score">${number(game.score)}</div>${banked?'Отличный момент, чтобы остановиться.':'Шарики вышли за край. В этот раз очки не сохранены.'}<br><small>Слияний: ${game.merges} · Лучший шарик: ${game.maxTier+1}</small><br><strong>Твой рекорд: ${number(stats.best)}</strong>`;
-  showModal(text,body,[{label:'Ещё один стакан',run:newGame}],banked?'★':'◌');
+function showResult() {
+  const body=`<div class="result-score">${number(game.score)}</div>Шарик выпал за край. Очки сохранены автоматически.<br><small>Слияний: ${game.merges} · Лучший шарик: ${game.maxTier+1}</small><br><strong>Твой рекорд: ${number(stats.best)}</strong>`;
+  showModal('Партия завершена',body,[{label:'Ещё один стакан',run:newGame}],'★');
 }
 
 function showHelp() {
-  showModal('Наполни стакан',`<ul><li><strong>Наведи и отпусти.</strong> На телефоне веди пальцем и отпусти его. На компьютере двигай мышь и щёлкай.</li><li><strong>Одинаковые шарики сливаются.</strong> Зелёный даёт 10 очков, фиолетовый 40, красный 90, оранжевый 160. Сумма цепочки показывается как комбо.</li><li><strong>Стакан растёт</strong> при открытии крупных шариков. Не дай шарикам выпасть или застрять целиком над краем.</li><li><strong>«Забрать очки»</strong> завершает партию и сохраняет результат. При переполнении очки этой партии сгорают.</li><li><strong>Четыре способности:</strong> смена, встряска, подброс и удаление выбранного шарика. По три использования каждого вида на партию, бесплатно.</li></ul><small>Клавиши: ← → — прицел, пробел — бросок, P — пауза.<br>Рекорд и партия сохраняются в этом браузере.<br>Независимая версия по мотивам Ball Guys.</small>`,[{label:'Всё понятно!'}],'☺');
+  showModal('Наполни стакан',`<ul><li><strong>Наведи и отпусти.</strong> На телефоне веди пальцем и отпусти его. На компьютере двигай мышь и щёлкай.</li><li><strong>Одинаковые шарики сливаются.</strong> Зелёный даёт 10 очков, фиолетовый 40, красный 90, оранжевый 160. Сумма цепочки показывается как комбо.</li><li><strong>Стакан растёт</strong> при открытии крупных шариков. Шарики могут подниматься выше края — главное, чтобы они не выпали наружу.</li><li><strong>Один шарик выпал — партия окончена.</strong> Очки сохраняются автоматически, а рекорд обновляется.</li><li><strong>Четыре способности:</strong> смена, встряска, подброс и удаление выбранного шарика. По три использования каждого вида на партию, бесплатно.</li></ul><small>Клавиши: ← → — прицел, пробел — бросок, P — пауза.<br>Рекорд и партия сохраняются в этом браузере.<br>Независимая версия по мотивам Ball Guys.</small>`,[{label:'Всё понятно!'}],'☺');
 }
 
 function showPause() {
@@ -317,7 +310,6 @@ $('restart').addEventListener('click',()=>{
   showModal('Начать с чистого стакана?','Текущие очки будут потеряны.<br>Твой рекорд останется.',[{label:'Начать заново',run:newGame},{label:'Продолжить эту партию',secondary:true}],'↻');
 });
 $('sound').addEventListener('click',()=>{stats.sound=!stats.sound;unlockAudio();sound('merge',3);uiDirty=true;save();});
-$('checkout').addEventListener('click',()=>{if(!game.score)return;unlockAudio();showModal('Забрать очки?',`<div class="result-score">${number(game.score)}</div>Сохрани результат и начни новую партию.`,[{label:'Да, забрать!',run:()=>game.checkout()},{label:'Продолжить игру',secondary:true}],'★');});
 for(const kind of ['swap','shake','lift'])$(kind).addEventListener('click',()=>{if(paused)return;unlockAudio();setTarget(false);if(game.usePower(kind)){uiDirty=true;save();toast({swap:'Шарики поменялись!',shake:'Встряхнули!',lift:'Вверх!'}[kind]);}});
 $('sniper').addEventListener('click',()=>{if(!paused&&game.powers.sniper&&game.balls.length)setTarget(!targeting);});
 $('cancel-target').addEventListener('click',()=>setTarget(false));
@@ -377,7 +369,7 @@ function frame(time) {
   const comboVisible=game.combo>=1&&game.time-game.lastMerge<1700;
   $('combo').hidden=!comboVisible;
   if(comboVisible)$('combo').innerHTML=`<strong>+${game.comboPoints}</strong>${game.combo}× Комбо!`;
-  $('status').textContent=game.danger>.2?'Выше края! Встряхни или забери очки':targeting?'Выбери шарик на поле':game.drops?'Лови момент для следующего слияния':'Объедини два одинаковых шарика';
+  $('status').textContent=game.state==='finished'?'Партия завершена. Очки сохранены':targeting?'Выбери шарик на поле':game.drops?'Лови момент для следующего слияния':'Объедини два одинаковых шарика';
   if(time-lastSave>1500){if(game.state==='playing'&&!paused)save();lastSave=time;}
   requestAnimationFrame(frame);
 }
