@@ -1,6 +1,7 @@
 import { MergeGame, BALLS, WIDTH, HEIGHT, STEP, DROP_Y } from './core.js';
 import { DiscoveryIntro, drawDiscovery } from './discovery.js';
 import { GameAudio } from './audio.js';
+import { Leaderboard } from './leaderboard.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game'), ctx = canvas.getContext('2d');
@@ -25,6 +26,8 @@ let installPrompt = null;
 let particles = [], labels = [], lastFrame = performance.now(), accumulator = 0, lastSave = 0, uiDirty = true;
 const game = new MergeGame(window.Matter, { onEvent });
 const restored = game.restore(saved?.run);
+const rankings=new Leaderboard({onChange:renderRankings,onBest:best=>{stats.best=Math.max(stats.best,best);uiDirty=true;save();}});
+const dialogOpen=()=>$('modal').open||$('profile-dialog').open;
 
 function save() {
   try {
@@ -80,6 +83,7 @@ function onEvent(event) {
     stats.best = Math.max(stats.best,event.score);
     stats.bank += event.score;
     stats.lastScore = event.score;
+    rankings.record(event.score);
     setTarget(false);
     save();
     sound('finished');
@@ -264,12 +268,64 @@ function newGame() {
 }
 
 function showResult() {
-  const body=`<div class="result-score">${number(game.score)}</div>Шарик выпал за край. Очки сохранены автоматически.<br><small>Слияний: ${game.merges} · Лучший шарик: ${game.maxTier+1}</small><br><strong>Твой рекорд: ${number(stats.best)}</strong>`;
-  showModal('Партия завершена',body,[{label:'Ещё один стакан',run:newGame}],'★');
+  const body=`<div class="result-score">${number(game.score)}</div>Шарик выпал за край. Очки сохранены автоматически.<br><small>Слияний: ${game.merges} · Лучший шарик: ${game.maxTier+1}</small><br><strong>Твой рекорд: ${number(stats.best)}</strong><p id="ranking-save-state" class="ranking-note"></p>`;
+  showModal('Партия завершена',body,[{label:'Ещё один стакан',run:newGame},{label:'Топ‑10',run:showLeaderboard,secondary:true}],'★');renderRankings();
 }
 
+function rankingRows(container,limit){
+  container.replaceChildren();
+  for(let i=0;i<limit;i++){
+    const player=rankings.players[i];
+    if(!player&&limit===10)break;
+    const row=document.createElement('span');row.className='ranking-row';
+    if(player?.id===rankings.profile?.id)row.classList.add('is-you');
+    const rank=document.createElement('span');rank.className='ranking-place';rank.textContent=String(i+1);
+    const name=document.createElement('span');name.className='ranking-name';name.textContent=player?.name||'—';
+    const score=document.createElement('strong');score.textContent=player?number(player.score):'—';
+    row.append(rank,name,score);container.append(row);
+  }
+}
+
+function renderRankings(){
+  $('player-name').textContent=rankings.profile?.name||'Введи имя';
+  rankingRows($('top-three'),3);
+  const list=$('top-ten');if(list)rankingRows(list,10);
+  const note=$('ranking-status');
+  if(note)note.textContent=rankings.status==='offline'?'Нет связи. Показаны последние загруженные результаты.':rankings.status==='loading'?'Загружаем рейтинг…':rankings.players.length?'Лучший результат каждого игрока.':'Пока нет результатов. Стань первым!';
+  const result=$('ranking-save-state');
+  if(result)result.textContent=rankings.profile?.pending!==null?(rankings.status==='offline'?'Результат сохранён на устройстве. Отправим в рейтинг, когда появится связь.':'Отправляем результат в общий рейтинг…'):'Результат сохранён в общем рейтинге.';
+}
+
+function showLeaderboard(){
+  showModal('Топ‑10','<p class="ranking-subtitle">Все игроки по этой ссылке</p><div id="top-ten" class="top-ten"></div><p id="ranking-status" class="ranking-note" role="status"></p>',[{label:game.state==='finished'?'Играть ещё':'Вернуться в игру',run:()=>{if(game.state==='finished')newGame();}}],'★');
+  renderRankings();void rankings.refresh();
+}
+
+function showProfile(){
+  paused=true;pointer=null;syncAudio();save();
+  $('name-input').value=rankings.profile?.name||'';
+  $('profile-close').hidden=!rankings.profile;$('name-error').hidden=true;
+  $('profile-title').textContent=rankings.profile?'Твоё имя':'Как тебя зовут?';
+  $('profile-dialog').showModal();$('name-input').focus();
+}
+
+$('leaderboard-button').addEventListener('click',showLeaderboard);
+$('player-button').addEventListener('click',showProfile);
+$('profile-form').addEventListener('submit',event=>{
+  event.preventDefault();
+  if(!rankings.setName($('name-input').value,stats.best>0||stats.lastScore!==null?stats.best:null)){
+    $('name-error').textContent='До 20 символов: буквы, цифры, пробел, точка или тире.';$('name-error').hidden=false;return;
+  }
+  $('profile-dialog').close();
+});
+$('profile-close').addEventListener('click',()=>$('profile-dialog').close());
+$('profile-dialog').addEventListener('cancel',event=>{if(!rankings.profile)event.preventDefault();});
+$('profile-dialog').addEventListener('close',()=>{paused=dialogOpen();lastFrame=performance.now();accumulator=0;syncAudio();if(!paused)canvas.focus({preventScroll:true});});
+window.addEventListener('online',()=>void rankings.refresh());
+setInterval(()=>{if(!document.hidden)void rankings.refresh();},30000);
+
 function showHelp() {
-  showModal('Наполни стакан',`<ul><li><strong>Наведи и отпусти.</strong> На телефоне веди пальцем и отпусти его. На компьютере двигай мышь и щёлкай.</li><li><strong>Одинаковые шарики сливаются.</strong> Зелёный даёт 10 очков, фиолетовый 40, красный 90, оранжевый 160. Сумма цепочки показывается как комбо.</li><li><strong>Стакан растёт</strong> при открытии крупных шариков. Шарики могут подниматься выше края — главное, чтобы они не выпали наружу.</li><li><strong>Один шарик выпал — партия окончена.</strong> Очки сохраняются автоматически, а рекорд обновляется.</li><li><strong>Четыре способности:</strong> смена, встряска, подброс и удаление выбранного шарика. По три использования каждого вида на партию, бесплатно.</li></ul><small>Клавиши: ← → — прицел, пробел — бросок, P — пауза.<br>Рекорд и партия сохраняются в этом браузере.<br>Независимая версия по мотивам Ball Guys.</small>`,[{label:'Всё понятно!'}],'☺');
+  showModal('Наполни стакан',`<ul><li><strong>Наведи и отпусти.</strong> На телефоне веди пальцем и отпусти его. На компьютере двигай мышь и щёлкай.</li><li><strong>Одинаковые шарики сливаются.</strong> Зелёный даёт 10 очков, фиолетовый 40, красный 90, оранжевый 160. Сумма цепочки показывается как комбо.</li><li><strong>Стакан растёт</strong> при открытии крупных шариков. Шарики могут подниматься выше края — главное, чтобы они не выпали наружу.</li><li><strong>Один шарик выпал — партия окончена.</strong> Очки сохраняются автоматически, а рекорд обновляется.</li><li><strong>Четыре способности:</strong> смена, встряска, подброс и удаление выбранного шарика. По три использования каждого вида на партию, бесплатно.</li></ul><small>Клавиши: ← → — прицел, пробел — бросок, P — пауза.<br>Партия сохраняется на устройстве, лучший результат — в общем рейтинге. Нажми на топ‑3, чтобы открыть топ‑10.<br>Независимая версия по мотивам Ball Guys.</small>`,[{label:'Всё понятно!'}],'☺');
 }
 
 function showPause() {
@@ -300,7 +356,7 @@ $('install').addEventListener('click',async()=>{
 });
 syncInstallButton();
 
-$('modal').addEventListener('close',()=>{paused=$('modal').open;lastFrame=performance.now();accumulator=0;syncAudio();if(!paused)canvas.focus({preventScroll:true});});
+$('modal').addEventListener('close',()=>{paused=dialogOpen();lastFrame=performance.now();accumulator=0;syncAudio();if(!paused)canvas.focus({preventScroll:true});});
 $('modal-close').addEventListener('click',()=>{if(game.state!=='playing')newGame();$('modal').close();});
 $('modal').addEventListener('cancel',()=>{if(game.state!=='playing')newGame();});
 $('help').addEventListener('click',showHelp);
@@ -314,7 +370,7 @@ $('music').addEventListener('click',()=>{stats.music=!stats.music;audio.setPrefe
 document.addEventListener('pointerdown',unlockAudio,{capture:true});
 document.addEventListener('keydown',unlockAudio,{capture:true});
 // Suppress selection and the long-press menu without cancelling game gestures.
-for(const event of ['selectstart','contextmenu','dragstart'])document.addEventListener(event,e=>e.preventDefault());
+for(const event of ['selectstart','contextmenu','dragstart'])document.addEventListener(event,e=>{if(!e.target.closest?.('input,textarea'))e.preventDefault();});
 for(const kind of ['swap','shake','lift'])$(kind).addEventListener('click',()=>{if(paused||discovery.current)return;unlockAudio();setTarget(false);if(game.usePower(kind)){uiDirty=true;save();toast({swap:'Шарики поменялись!',shake:'Встряхнули!',lift:'Вверх!'}[kind]);}});
 $('sniper').addEventListener('click',()=>{if(!paused&&!discovery.current&&game.powers.sniper&&game.balls.length)setTarget(!targeting);});
 $('cancel-target').addEventListener('click',()=>setTarget(false));
@@ -344,7 +400,7 @@ canvas.addEventListener('pointerup',event=>{
 canvas.addEventListener('pointercancel',()=>{pointer=null;});
 canvas.addEventListener('lostpointercapture',()=>{pointer=null;});
 document.addEventListener('keydown',event=>{
-  if($('modal').open)return;
+  if(dialogOpen())return;
   if(event.key==='Escape'){setTarget(false);return;}
   if(event.code==='KeyP'){showPause();return;}
   if(paused||discovery.current||game.state!=='playing'||event.target.closest?.('button,a'))return;
@@ -352,7 +408,7 @@ document.addEventListener('keydown',event=>{
   if(event.code==='Space'&&!event.repeat){event.preventDefault();unlockAudio();if(!targeting&&game.drop()){uiDirty=true;save();}}
 });
 document.addEventListener('visibilitychange',()=>{
-  if(document.hidden){save();pointer=null;if(game.state==='playing'&&game.drops&&!$('modal').open)showPause();}
+  if(document.hidden){save();pointer=null;if(game.state==='playing'&&game.drops&&!dialogOpen())showPause();}
   else{lastFrame=performance.now();accumulator=0;}
   syncAudio();
 });
@@ -386,6 +442,8 @@ function frame(time) {
 }
 
 updateCollection();updateUI();resize();save();
+renderRankings();void rankings.refresh();
+if(!rankings.profile)showProfile();
 if(restored&&game.drops)toast('Твой стакан на месте. Продолжаем!');
 if(!storageAvailable)toast('Сохранение недоступно в этом браузере');
 requestAnimationFrame(frame);
