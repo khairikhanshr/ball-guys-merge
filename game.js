@@ -1,4 +1,4 @@
-import { MergeGame, BALLS, WIDTH, HEIGHT, STEP } from './core.js';
+import { MergeGame, BALLS, WIDTH, HEIGHT, STEP, DROP_Y } from './core.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game'), ctx = canvas.getContext('2d');
@@ -14,6 +14,7 @@ const stats = {
   sound: saved?.sound === true,
 };
 let paused = false, targeting = false, pointer = null, audioContext, lastToast = 0;
+let installPrompt = null, discovery = null;
 let particles = [], labels = [], lastFrame = performance.now(), accumulator = 0, lastSave = 0, uiDirty = true;
 const game = new MergeGame(window.Matter, { onEvent });
 const restored = game.restore(saved?.run);
@@ -68,11 +69,11 @@ function onEvent(event) {
       const angle = Math.random()*Math.PI*2, speed = 1+Math.random()*3;
       particles.push({x:event.x,y:event.y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed-1,life:1,color,size:2+Math.random()*3});
     }
-    labels.push({x:event.x,y:event.y-20,text:`+${event.points}${event.combo>1?` ×${event.combo}`:''}`,life:1});
+    labels.push({x:event.x,y:event.y-20,text:`+${event.points}`,life:1});
     if (event.tier > stats.discovered && event.tier <= 10) {
       stats.discovered = event.tier;
       updateCollection();
-      if(event.tier>=4) toast(`${BALLS[event.tier].name}! ${event.tier>=4?'Стакан стал больше':''}`);
+      if(event.tier>=4){discovery={tier:event.tier,start:performance.now()};game.cooldown=Math.max(game.cooldown,1400);}
     }
     if(event.tier===11) toast('Космическое слияние!');
   } else if (event.type === 'drop') {
@@ -93,13 +94,24 @@ function onEvent(event) {
   } else if (event.type === 'power') sound('merge',2);
 }
 
-function ballArt(context,x,y,r,tier,angle=0,stretch=0,alpha=1) {
+function ballArt(context,x,y,r,tier,angle=0,stretch=0,alpha=1,outline=null,face=true,blink=false) {
   const b = BALLS[tier];
   context.save(); context.globalAlpha=alpha; context.translate(x,y);
-  context.rotate(angle*.35); context.scale(1+stretch,1-stretch*.65);
-  context.lineWidth = Math.max(2,r*.075); context.strokeStyle='#171b20';
-  context.beginPath(); context.arc(0,0,r,0,Math.PI*2); context.fillStyle=b.color; context.fill(); context.stroke();
-  context.save();context.beginPath();context.arc(0,0,r-1,0,Math.PI*2);context.clip();
+  context.scale(1+stretch,1-stretch*.65);
+  const shape=()=>{
+    context.beginPath();
+    if(!outline){context.arc(0,0,r,0,Math.PI*2);return;}
+    const count=outline.length;
+    for(let i=0;i<count;i++){
+      const a=outline[i],b=outline[(i+1)%count];
+      if(i===0){const previous=outline[count-1];context.moveTo((previous.x+a.x)/2-x,(previous.y+a.y)/2-y);}
+      context.quadraticCurveTo(a.x-x,a.y-y,(a.x+b.x)/2-x,(a.y+b.y)/2-y);
+    }
+    context.closePath();
+  };
+  context.lineWidth = Math.max(2.5,r*.14); context.strokeStyle='#060708';
+  shape(); context.fillStyle=b.color; context.fill(); context.stroke();
+  context.save();shape();context.clip();
   context.fillStyle = 'rgba(0,0,0,.07)';context.beginPath();context.ellipse(r*.7,r*.3,r*.38,r*.9,.4,0,Math.PI*2);context.fill();
   if(tier===8){
     context.fillStyle='#83d775';
@@ -114,15 +126,21 @@ function ballArt(context,x,y,r,tier,angle=0,stretch=0,alpha=1) {
   context.fillStyle='rgba(255,255,255,.65)';context.beginPath();context.ellipse(-r*.43,-r*.64,r*.16,r*.08,-.55,0,7);context.fill();
   context.beginPath();context.arc(-r*.65,-r*.42,r*.055,0,7);context.fill();
   context.restore();
+  if(!face){context.restore();return;}
+  if(outline){
+    const xs=outline.map(v=>v.x),ys=outline.map(v=>v.y);
+    context.scale(Math.max(.65,(Math.max(...xs)-Math.min(...xs))/(2*r)),Math.max(.55,(Math.max(...ys)-Math.min(...ys))/(2*r)));
+  }
+  context.rotate(angle*.35);
   const eyeY = -r*.1;
-  if(tier===5||tier===9){
+  if(blink){
     context.strokeStyle='#181c20';context.lineWidth=Math.max(1.8,r*.05);context.lineCap='round';
     for(const side of [-1,1]){context.beginPath();context.ellipse(side*r*.31,eyeY+r*.09,r*.18,r*.12,0,Math.PI,Math.PI*2);context.stroke();}
   }else{
     for(const side of [-1,1]){
       const ex = side*r*.3;
       context.fillStyle='#fff';context.strokeStyle='#171b20';context.lineWidth=Math.max(1,r*.04);
-      context.beginPath();context.ellipse(ex,eyeY,r*.245,r*.33,0,0,7);context.fill();context.stroke();
+      context.beginPath();context.ellipse(ex,eyeY,r*.255,r*.37,0,0,7);context.fill();context.stroke();
       context.fillStyle='#14181d';context.beginPath();context.ellipse(ex+r*.035,eyeY+r*.07,r*.115,r*.195,0,0,7);context.fill();
       context.fillStyle='#fff';context.beginPath();context.ellipse(ex+r*.005,eyeY-r*.03,r*.043,r*.07,.3,0,7);context.fill();
     }
@@ -139,7 +157,7 @@ function drawCup(c) {
   const path = () => {ctx.beginPath();ctx.moveTo(c.left,c.top);ctx.lineTo(c.left+c.inset,c.bottom);ctx.quadraticCurveTo(c.left+c.inset+2,c.bottom+2,c.left+c.inset+10,c.bottom+2);ctx.lineTo(c.right-c.inset-10,c.bottom+2);ctx.quadraticCurveTo(c.right-c.inset-2,c.bottom+2,c.right-c.inset,c.bottom);ctx.lineTo(c.right,c.top);};
   ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
   path();ctx.lineWidth=24;ctx.strokeStyle='#fffefa';ctx.stroke();
-  path();ctx.lineWidth=18;ctx.strokeStyle='#22262b';ctx.stroke();
+  path();ctx.lineWidth=18;ctx.strokeStyle='#080909';ctx.stroke();
   ctx.strokeStyle='#f7f5ec';ctx.lineWidth=2.6;
   for(let y=c.top+12;y<c.bottom-5;y+=10){
     const slope=(y-c.top)/(c.bottom-c.top)*c.inset;
@@ -155,28 +173,25 @@ function draw(time,delta) {
   ctx.setTransform(ratio,0,0,ratio,0,0);
   ctx.clearRect(0,0,WIDTH,HEIGHT);
   // Squared paper, matching the hand-drawn cup and characters.
-  ctx.strokeStyle='#e0e4d9';ctx.lineWidth=.8;
+  ctx.strokeStyle='#c4cccb';ctx.lineWidth=2;
   ctx.beginPath();
-  for(let x=10;x<WIDTH;x+=28){ctx.moveTo(x,0);ctx.lineTo(x,HEIGHT);}
-  for(let y=10;y<HEIGHT;y+=28){ctx.moveTo(0,y);ctx.lineTo(WIDTH,y);}
+  for(let x=25;x<WIDTH;x+=35){ctx.moveTo(x,0);ctx.lineTo(x,HEIGHT);}
+  for(let y=0;y<HEIGHT;y+=35){ctx.moveTo(0,y);ctx.lineTo(WIDTH,y);}
   ctx.stroke();
   const c=game.cup;
-  ctx.fillStyle='rgba(255,255,255,.3)';ctx.beginPath();ctx.moveTo(c.left,c.top);ctx.lineTo(c.left+c.inset,c.bottom);ctx.lineTo(c.right-c.inset,c.bottom);ctx.lineTo(c.right,c.top);ctx.closePath();ctx.fill();
-  const radius=BALLS[game.current].radius;
-  if(game.state==='playing'&&!targeting){
-    const readiness=1-game.cooldown/380;
-    ctx.save();ctx.strokeStyle='#adb8a2';ctx.lineWidth=1.4;ctx.setLineDash([3,7]);
-    ctx.beginPath();ctx.moveTo(game.aim,113+radius+12);ctx.lineTo(game.aim,c.bottom-15);ctx.stroke();ctx.restore();
-    ballArt(ctx,game.aim,113,radius,game.current,0,0,.35+.65*readiness);
-    ctx.fillStyle='#a6af98';ctx.font='bold 9px Arial';ctx.textAlign='center';ctx.fillText('БРОСАЙ СЮДА',game.aim,65);
+  const radius=BALLS[game.current].radius*.8;
+  if(game.state==='playing'&&!targeting&&game.cooldown<120){
+    ctx.save();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.setLineDash([12,7]);
+    ctx.beginPath();ctx.moveTo(game.aim,DROP_Y+radius+12);ctx.lineTo(game.aim,c.bottom-15);ctx.stroke();ctx.restore();
+    ballArt(ctx,game.aim,DROP_Y,radius,game.current,0,0,1,null,false);
   }
   if(game.danger>0){
     ctx.save();ctx.setLineDash([8,7]);ctx.strokeStyle=`rgba(223,93,75,${.35+game.danger*.65})`;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(c.left+13,c.top);ctx.lineTo(c.right-13,c.top);ctx.stroke();ctx.restore();
-    ctx.font='bold 12px Arial';ctx.textAlign='center';ctx.fillStyle='#c65b4c';ctx.fillText(`Осторожно! ${Math.max(1,Math.ceil((1-game.danger)*2.2))}`,250,c.top-17);
+    ctx.font='700 19px Ball';ctx.textAlign='center';ctx.fillStyle='#c65b4c';ctx.fillText(`Осторожно! ${Math.max(1,Math.ceil((1-game.danger)*2.2))}`,250,c.top-17);
   }
   for(const b of game.balls){
-    const stretch=reducedMotion?0:Math.min(.065,Math.abs(b.velocity.y)*.006);
-    ballArt(ctx,b.position.x,b.position.y,BALLS[b.plugin.tier].radius,b.plugin.tier,b.angle,stretch);
+    const blink=(time+b.id*827)%4300<150;
+    ballArt(ctx,b.position.x,b.position.y,BALLS[b.plugin.tier].radius,b.plugin.tier,b.angle,0,1,b.vertices,true,blink);
     if(targeting){ctx.strokeStyle='#ef6b5c';ctx.lineWidth=2;ctx.setLineDash([4,4]);ctx.beginPath();ctx.arc(b.position.x,b.position.y,BALLS[b.plugin.tier].radius+4,0,7);ctx.stroke();ctx.setLineDash([]);}
   }
   drawCup(c);
@@ -187,24 +202,31 @@ function draw(time,delta) {
   ctx.globalAlpha=1;particles=particles.filter(p=>p.life>0);
   for(const p of labels){
     if(!paused){p.y-=.6*delta/16.67;p.life-=delta/950;}
-    ctx.globalAlpha=Math.max(0,p.life);ctx.font='bold 18px Arial';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='#f9f7ef';ctx.strokeText(p.text,p.x,p.y);ctx.fillStyle='#3f7447';ctx.fillText(p.text,p.x,p.y);
+    ctx.globalAlpha=Math.max(0,p.life);ctx.font='700 19px Ball';ctx.textAlign='center';ctx.lineWidth=3;ctx.strokeStyle='#050505';ctx.strokeText(p.text,p.x,p.y);ctx.fillStyle='#fff';ctx.fillText(p.text,p.x,p.y);
   }
   ctx.globalAlpha=1;labels=labels.filter(p=>p.life>0);
   if(time-lastToast>2100)$('toast').classList.remove('show');
+  if(discovery){
+    if(time-discovery.start>1500){discovery=null;return;}
+    ctx.fillStyle='#0008';ctx.fillRect(0,0,WIDTH,HEIGHT);
+    ctx.textAlign='center';ctx.font='700 35px Ball';ctx.lineWidth=6;ctx.strokeStyle='#000';ctx.fillStyle='#fff36b';
+    ctx.strokeText('Новый шарик открыт!',250,385);ctx.fillText('Новый шарик открыт!',250,385);
+    ballArt(ctx,250,535,78,discovery.tier,0,0,1);
+    ctx.font='700 50px Ball';ctx.fillStyle='#ffdf20';ctx.fillText('★',110,590);ctx.fillText('✦',367,465);
+  }
 }
 
 function updateUI() {
   $('score').textContent=number(game.score);
-  $('best').textContent=$('best-mobile').textContent=number(stats.best);
+  $('best').textContent=number(stats.best);
   $('checkout').disabled=!game.score||game.state!=='playing';
-  for(const kind of ['swap','shake','sniper']){
+  for(const kind of ['swap','shake','lift','sniper']){
     $(kind).querySelector('b').textContent=game.powers[kind];
     $(kind).disabled=!game.powers[kind]||game.state!=='playing'||(kind!=='swap'&&!game.balls.length);
   }
   const nc=$('next-ball').getContext('2d');nc.clearRect(0,0,108,108);
-  ballArt(nc,54,54,27+game.next*3,game.next);
+  ballArt(nc,54,54,35,game.next,0,0,1,null,false);
   $('next-ball').setAttribute('aria-label',`Следующий шарик: ${BALLS[game.next].name}`);
-  $('cup-label').textContent=`СТАКАН · УРОВЕНЬ ${Math.max(1,game.maxTier-2)}`;
   $('first-hint').hidden=game.drops>0;
   $('sound').setAttribute('aria-pressed',String(stats.sound));
   $('sound').setAttribute('aria-label',stats.sound?'Выключить звук':'Включить звук');
@@ -217,14 +239,11 @@ function updateCollection() {
   BALLS.forEach((ball,tier)=>{
     const row=document.createElement('div');row.className=`evolution-item ${tier>stats.discovered?'locked':tier===stats.discovered?'current':''}`;
     const icon=document.createElement('canvas');icon.width=icon.height=90;icon.setAttribute('aria-hidden','true');
-    ballArt(icon.getContext('2d'),45,45,26+tier*.9,tier);
-    const n=document.createElement('span');n.className='tier-number';n.textContent=String(tier+1).padStart(2,'0');
-    const name=document.createElement('span');name.className='evolution-name';name.textContent=ball.name;
-    const check=document.createElement('span');check.className='check';check.textContent=tier<=stats.discovered?'✓':'';
-    row.append(n,icon,name,check);$('evolution').append(row);
+    ballArt(icon.getContext('2d'),45,45,28+tier*.9,tier,0,0,1,null,false);
+    row.title=`${tier+1}. ${ball.name}${tier>stats.discovered?' — ещё не открыт':''}`;
+    row.setAttribute('aria-label',row.title);
+    row.append(icon);$('evolution').append(row);
   });
-  $('discovered').textContent=`${stats.discovered+1} из 11`;
-  $('collection-progress').style.width=`${(stats.discovered+1)/11*100}%`;
 }
 
 function setTarget(value) {
@@ -246,7 +265,7 @@ function showModal(title,body,actions,icon='✦') {
 }
 
 function newGame() {
-  game.reset();setTarget(false);particles=[];labels=[];paused=false;accumulator=0;
+  game.reset();setTarget(false);particles=[];labels=[];discovery=null;paused=false;accumulator=0;
   uiDirty=true;save();canvas.focus({preventScroll:true});
 }
 
@@ -257,7 +276,7 @@ function showResult(banked) {
 }
 
 function showHelp() {
-  showModal('Наполни стакан',`<ul><li><strong>Наведи и отпусти.</strong> На телефоне веди пальцем и отпусти его. На компьютере двигай мышь и щёлкай.</li><li><strong>Одинаковые шарики сливаются.</strong> Цепочка слияний даёт до ×5 очков. Всего 11 ступеней!</li><li><strong>Стакан растёт</strong> при открытии крупных шариков. Не держи шарики выше края дольше 2 секунд.</li><li><strong>«Забрать очки»</strong> завершает партию и сохраняет результат. При переполнении очки этой партии сгорают.</li><li><strong>Три помощи каждого вида:</strong> смена текущего шарика, встряска и удаление одного шарика. Запасы обновляются в новой партии — бесплатно.</li></ul><small>Клавиши: ← → — прицел, пробел — бросок, P — пауза.<br>Рекорд и партия сохраняются только в этом браузере.</small>`,[{label:'Всё понятно!'}],'☺');
+  showModal('Наполни стакан',`<ul><li><strong>Наведи и отпусти.</strong> На телефоне веди пальцем и отпусти его. На компьютере двигай мышь и щёлкай.</li><li><strong>Одинаковые шарики сливаются.</strong> Зелёный даёт 10 очков, фиолетовый 40, красный 90, оранжевый 160. Сумма цепочки показывается как комбо.</li><li><strong>Стакан растёт</strong> при открытии крупных шариков. Не дай шарикам выпасть или застрять целиком над краем.</li><li><strong>«Забрать очки»</strong> завершает партию и сохраняет результат. При переполнении очки этой партии сгорают.</li><li><strong>Четыре способности:</strong> смена, встряска, подброс и удаление выбранного шарика. По три использования каждого вида на партию, бесплатно.</li></ul><small>Клавиши: ← → — прицел, пробел — бросок, P — пауза.<br>Рекорд и партия сохраняются в этом браузере.<br>Независимая версия по мотивам Ball Guys.</small>`,[{label:'Всё понятно!'}],'☺');
 }
 
 function showPause() {
@@ -265,10 +284,33 @@ function showPause() {
   showModal('Перерыв на выдох', 'Твой стакан подождёт.<br>Партия уже сохранена.',[{label:'Продолжить игру'}],'Ⅱ');
 }
 
+function syncInstallButton() {
+  $('install').hidden = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+}
+
+function showInstall() {
+  const apple = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const instructions = `<div class="install-preview"><img src="./assets/apple-touch-icon.png" alt="Иконка Ball Guys" width="64" height="64"><span>Ball Guys<small>Твой стакан. В одно касание.</small></span></div><ol class="install-steps"><li><b>1</b><span>Открой эту игру в <strong>Safari</strong> на iPhone.</span></li><li><b>2</b><span>Нажми <strong>«Поделиться»</strong> <span class="share-mark">↑</span> — внизу или в меню страницы.</span></li><li><b>3</b><span>Выбери <strong>«На экран Домой»</strong>, включи <strong>«Открывать как веб-приложение»</strong>, если этот пункт есть, и нажми <strong>«Добавить»</strong>.</span></li></ol><p class="install-note">После этого игра запускается своей иконкой, без панели браузера. Открой её с интернетом один раз — дальше можно играть офлайн.</p>`;
+  showModal('Игра на главном экране', instructions + (apple?'':'<p class="install-note">На Android и компьютере: меню браузера → «Установить приложение», если такой пункт доступен.</p>'),[{label:'Понятно'}],'');
+}
+
+window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();installPrompt=event;syncInstallButton();});
+window.addEventListener('appinstalled',()=>{installPrompt=null;syncInstallButton();toast('Игра установлена!');});
+matchMedia('(display-mode: standalone)').addEventListener('change',syncInstallButton);
+$('install').addEventListener('click',async()=>{
+  if(!installPrompt){showInstall();return;}
+  const prompt=installPrompt;installPrompt=null;
+  paused=true;pointer=null;save();
+  try{await prompt.prompt();await prompt.userChoice;}
+  catch{showInstall();}
+  finally{paused=$('modal').open;lastFrame=performance.now();accumulator=0;syncInstallButton();}
+});
+syncInstallButton();
+
 $('modal').addEventListener('close',()=>{paused=$('modal').open;lastFrame=performance.now();accumulator=0;if(!paused)canvas.focus({preventScroll:true});});
 $('modal-close').addEventListener('click',()=>{if(game.state!=='playing')newGame();$('modal').close();});
 $('modal').addEventListener('cancel',()=>{if(game.state!=='playing')newGame();});
-$('help').addEventListener('click',showHelp);$('footer-help').addEventListener('click',showHelp);
+$('help').addEventListener('click',showHelp);
 $('pause').addEventListener('click',showPause);
 $('restart').addEventListener('click',()=>{
   if(!game.drops){newGame();return;}
@@ -276,7 +318,7 @@ $('restart').addEventListener('click',()=>{
 });
 $('sound').addEventListener('click',()=>{stats.sound=!stats.sound;unlockAudio();sound('merge',3);uiDirty=true;save();});
 $('checkout').addEventListener('click',()=>{if(!game.score)return;unlockAudio();showModal('Забрать очки?',`<div class="result-score">${number(game.score)}</div>Сохрани результат и начни новую партию.`,[{label:'Да, забрать!',run:()=>game.checkout()},{label:'Продолжить игру',secondary:true}],'★');});
-for(const kind of ['swap','shake'])$(kind).addEventListener('click',()=>{if(paused)return;unlockAudio();setTarget(false);if(game.usePower(kind)){uiDirty=true;save();toast(kind==='swap'?'Шарики поменялись!':'Встряхнули!');}});
+for(const kind of ['swap','shake','lift'])$(kind).addEventListener('click',()=>{if(paused)return;unlockAudio();setTarget(false);if(game.usePower(kind)){uiDirty=true;save();toast({swap:'Шарики поменялись!',shake:'Встряхнули!',lift:'Вверх!'}[kind]);}});
 $('sniper').addEventListener('click',()=>{if(!paused&&game.powers.sniper&&game.balls.length)setTarget(!targeting);});
 $('cancel-target').addEventListener('click',()=>setTarget(false));
 
@@ -332,9 +374,9 @@ function frame(time) {
   } else accumulator=0;
   draw(time,delta);
   if(uiDirty)updateUI();
-  const comboVisible=game.combo>1&&game.time-game.lastMerge<1600;
+  const comboVisible=game.combo>=1&&game.time-game.lastMerge<1700;
   $('combo').hidden=!comboVisible;
-  if(comboVisible)$('combo').textContent=`КОМБО ×${Math.min(game.combo,5)}`;
+  if(comboVisible)$('combo').innerHTML=`<strong>+${game.comboPoints}</strong>${game.combo}× Комбо!`;
   $('status').textContent=game.danger>.2?'Выше края! Встряхни или забери очки':targeting?'Выбери шарик на поле':game.drops?'Лови момент для следующего слияния':'Объедини два одинаковых шарика';
   if(time-lastSave>1500){if(game.state==='playing'&&!paused)save();lastSave=time;}
   requestAnimationFrame(frame);

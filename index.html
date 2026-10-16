@@ -3,12 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#f4f1e8">
-  <meta name="description" content="Наполняй стакан, объединяй шарики и собирай комбо. Бесплатная браузерная Merge-игра без рекламы — на телефоне и компьютере.">
+  <meta name="theme-color" content="#deded2">
+  <meta name="description" content="Наполняй стакан мягкими шариками и собирай комбо. Merge без рекламы, на телефоне и компьютере.">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Ball Guys">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="mobile-web-app-capable" content="yes">
   <title>Ball Guys · Наполни стакан</title>
   <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png">
   <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="preload" href="./assets/balsamiq-bold.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -16,37 +21,30 @@
     <symbol id="i-sound" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5Zm4 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
     <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 1 7M4 4v6h6"/></symbol>
-    <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 7h15l-4-4m5 14H5l4 4M4 7l4-4m12 14-4 4"/></symbol>
-    <symbol id="i-shake" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="m3 3-2 3 2 3m18 6 2 3-2 3M9 11h.1m6 0h.1m-5 3h4"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24"><path d="M21 6H5l4-4M3 18h16l-4 4M5 6l4 4m10 8-4-4"/></symbol>
+    <symbol id="i-shake" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><path d="M3 2Q0 5 3 8m18 8q3 3 0 6M9 11h.1m6 0h.1m-5 3q2 2 4 0"/></symbol>
+    <symbol id="i-lift" viewBox="0 0 24 24"><path d="M12 21V3m-3 3 3-3 3 3M7 18 3 6m-1 4 1-4 4 2m10 10 4-12m-4 2 4-2 1 4"/></symbol>
     <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v5m0 10v5M2 12h5m10 0h5"/><circle cx="12" cy="12" r="1"/></symbol>
-    <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M7 3h10v7a5 5 0 0 1-10 0V3Zm0 2H3v3a4 4 0 0 0 4 4m10-7h4v3a4 4 0 0 1-4 4m-5 3v5m-5 1h10"/></symbol>
+    <symbol id="i-install" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M5 16v5h14v-5"/></symbol>
+    <symbol id="i-checkout" viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 1 7M4 4v6h6"/><path d="m12 7-4 4 4 6 4-6-4-4Z"/></symbol>
   </defs></svg>
-  <header class="topbar">
-    <a class="brand" href="./" aria-label="Ball Guys — главная"><img src="./assets/icon.svg" alt="" width="42" height="42"><span>BALL <span class="brand-blue">GUYS</span><small>НАПОЛНИ СТАКАН</small></span></a>
-    <span class="no-ads"><span></span>Без рекламы. Всегда.</span>
-    <button id="help" class="icon-button help-button" aria-label="Как играть">?</button>
-  </header>
-  <main class="layout">
-    <aside class="left-panel">
-      <span class="eyebrow">ОДИН СТАКАН. МНОГО ШАРИКОВ.</span>
-      <h1>Маленький шар.<br>Большое <span>комбо.</span></h1>
-      <p class="intro">Бросай, объединяй, открывай новых.<br>Сколько поместится в твоём стакане?</p>
-      <div class="record-card"><svg><use href="#i-trophy"/></svg><div><span>ТВОЙ РЕКОРД</span><strong id="best">0</strong><small>забранных за одну игру</small></div><span class="record-star">✦</span></div>
-      <div class="howto"><h2>Всё начинается с одного шарика</h2><ol><li><b>01</b><span>Выбери место и отпусти шарик.</span></li><li><b>02</b><span>Два одинаковых → один побольше.</span></li><li><b>03</b><span>Забери очки до переполнения!</span></li></ol></div>
-      <div class="desktop-keys"><kbd>←</kbd><kbd>→</kbd> прицел <span>·</span> <kbd>Пробел</kbd> бросок</div>
-      <p class="save-note"><span class="save-dot"></span> Прогресс сохраняется на этом устройстве</p>
-    </aside>
-    <section class="game-card" aria-label="Игра — наполни стакан">
-      <div class="game-toolbar"><div class="mode"><span class="live-dot"></span> MERGE <span class="mode-label">свободная игра</span></div><div class="toolbar-actions"><button id="sound" class="icon-button" aria-label="Включить звук" aria-pressed="false"><svg><use href="#i-sound"/></svg><span class="mute-slash"></span></button><button id="pause" class="icon-button" aria-label="Пауза"><svg><use href="#i-pause"/></svg></button><button id="restart" class="icon-button" aria-label="Начать заново"><svg><use href="#i-reset"/></svg></button></div></div>
-      <div class="scorebar"><div class="score"><span>ТЕКУЩИЙ СЧЁТ</span><strong id="score">0</strong></div><span id="combo" class="combo" hidden>КОМБО ×2</span><div class="next"><span>СЛЕДУЮЩИЙ</span><canvas id="next-ball" width="108" height="108" aria-label="Следующий шарик"></canvas></div></div>
-      <div class="stage-wrap"><canvas id="game" width="1000" height="1300" tabindex="0" role="application" aria-label="Игровое поле. Стрелки — прицелиться, пробел — бросить шарик. На телефоне коснись и отпусти."></canvas><div id="toast" class="toast" aria-live="polite"></div><div id="target-hint" class="target-hint" hidden>Выбери шарик для удаления <button id="cancel-target" aria-label="Отменить удаление">×</button></div><span class="cup-label" id="cup-label">СТАКАН · УРОВЕНЬ 1</span><span class="first-hint" id="first-hint">ПРИЦЕЛЬСЯ И ОТПУСТИ <span>↓</span></span></div>
-      <div class="game-bottom"><div class="powers"><button id="swap" class="power" title="Поменять текущий и следующий шарик"><svg><use href="#i-swap"/></svg><span>Смена</span><b>3</b></button><button id="shake" class="power" title="Встряхнуть стакан"><svg><use href="#i-shake"/></svg><span>Встряска</span><b>3</b></button><button id="sniper" class="power" title="Удалить один выбранный шарик"><svg><use href="#i-target"/></svg><span>Прицел</span><b>3</b></button></div><button id="checkout" class="checkout" disabled><span>Забрать очки</span><svg viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6"/></svg></button></div>
-      <div class="game-caption"><span id="status">Объедини два одинаковых шарика</span><span class="mobile-best">Рекорд <b id="best-mobile">0</b></span><span class="desktop-caption">без билетов и ожидания</span></div>
-    </section>
-    <aside class="right-panel"><div class="evolution-head"><span class="eyebrow">КОЛЛЕКЦИЯ</span><h2>Путь к космосу <span>✦</span></h2><p>Каждое слияние — на шаг выше.</p></div><div id="evolution" class="evolution"></div><div class="collection-foot"><span id="discovered">1 из 11</span><div><i id="collection-progress"></i></div></div><div class="tip"><span>МАЛЕНЬКИЙ СОВЕТ</span><p>Оставляй место для больших.<br>Иногда лучше забрать очки<br>и начать новую историю.</p><span class="tip-doodle">↗</span></div></aside>
+  <main class="game-card" aria-label="Ball Guys — наполни стакан">
+    <div class="stage-wrap"><canvas id="game" width="1000" height="2000" tabindex="0" role="application" aria-label="Игровое поле. Стрелки — прицелиться, пробел — бросить. На телефоне коснись и отпусти."></canvas></div>
+    <div class="scorebar outlined"><div>Счёт: <strong id="score">0</strong></div><div>Рекорд: <strong id="best">0</strong></div></div>
+    <div class="game-toolbar"><span class="no-ads">Без рекламы</span><div class="toolbar-actions"><button id="sound" class="icon-button" aria-label="Включить звук" aria-pressed="false"><svg><use href="#i-sound"/></svg><span class="mute-slash"></span></button><button id="pause" class="icon-button" aria-label="Пауза"><svg><use href="#i-pause"/></svg></button><button id="restart" class="icon-button" aria-label="Начать заново"><svg><use href="#i-reset"/></svg></button></div></div>
+    <button id="install" class="install-button blue-tile"><svg><use href="#i-install"/></svg><span class="outlined">На экран Домой</span></button>
+    <div class="next blue-tile"><canvas id="next-ball" width="108" height="108" aria-label="Следующий шарик"></canvas><span class="outlined">Следующий</span></div>
+    <button id="checkout" class="checkout" disabled><svg><use href="#i-checkout"/></svg><span class="outlined">Забрать очки</span></button>
+    <div id="combo" class="combo outlined" hidden></div>
+    <div id="toast" class="toast outlined" aria-live="polite"></div>
+    <div id="target-hint" class="target-hint" hidden>Выбери шарик <button id="cancel-target" aria-label="Отменить удаление">×</button></div>
+    <span class="first-hint outlined" id="first-hint">Прицелься и отпусти!</span>
+    <button id="help" class="help-button blue-tile outlined" aria-label="Как играть">?</button>
+    <div class="evolution-track"><div id="evolution" class="evolution" aria-label="Открытые шарики"></div><div class="evolution-arrow"></div></div>
+    <div class="powers"><button id="swap" class="power" title="Поменять текущий и следующий шарик" aria-label="Смена шарика"><svg><use href="#i-swap"/></svg><b class="outlined">3</b></button><button id="shake" class="power" title="Встряхнуть стакан" aria-label="Встряска"><svg><use href="#i-shake"/></svg><b class="outlined">3</b></button><button id="lift" class="power" title="Подбросить шарики" aria-label="Подбросить"><svg><use href="#i-lift"/></svg><b class="outlined">3</b></button><button id="sniper" class="power sniper" title="Удалить выбранный шарик" aria-label="Прицел"><svg><use href="#i-target"/></svg><b class="outlined">3</b></button></div>
+    <p class="save-note sr-only">Прогресс сохраняется на этом устройстве</p><span id="status" class="sr-only" role="status"></span>
   </main>
-  <footer><span>Ещё один шарик?</span><span>Неофициальная браузерная версия · Сделано для игры, без рекламы</span><button id="footer-help">Правила игры</button></footer>
-  <dialog id="modal"><button id="modal-close" class="modal-close" aria-label="Закрыть">×</button><div id="modal-icon" class="modal-icon">✦</div><h2 id="modal-title"></h2><div id="modal-body"></div><div id="modal-actions"></div></dialog>
+  <dialog id="modal" aria-labelledby="modal-title"><button id="modal-close" class="modal-close" aria-label="Закрыть">×</button><div id="modal-icon" class="modal-icon">✦</div><h2 id="modal-title"></h2><div id="modal-body"></div><div id="modal-actions"></div></dialog>
   <noscript>Для игры нужен включённый JavaScript.</noscript>
   <script src="./vendor/matter.min.js"></script><script type="module" src="./game.js"></script>
 </body></html>

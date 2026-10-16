@@ -1,18 +1,21 @@
+import { createGel, prepareGel, updateGel } from './gel.js';
+
 export const BALLS = [
-  { name: 'Голубой', color: '#50c8f6', radius: 13, points: 1 },
-  { name: 'Зелёный', color: '#91e775', radius: 18, points: 3 },
-  { name: 'Фиолетовый', color: '#df79ee', radius: 25, points: 6 },
-  { name: 'Красный', color: '#ff5c68', radius: 33, points: 10 },
-  { name: 'Оранжевый', color: '#ffa267', radius: 42, points: 15 },
-  { name: 'Жёлтый', color: '#ffeb67', radius: 52, points: 21 },
-  { name: 'Облачко', color: '#ffffff', radius: 63, points: 28 },
-  { name: 'Ночь', color: '#454261', radius: 75, points: 36 },
-  { name: 'Планета', color: '#51b9f4', radius: 88, points: 45 },
-  { name: 'Солнце', color: '#ffc34e', radius: 101, points: 55 },
-  { name: 'Космос', color: '#9b7fe9', radius: 116, points: 100 },
+  { name: 'Голубой', color: '#50c8f6', radius: 27, points: 0 },
+  { name: 'Зелёный', color: '#91e775', radius: 35, points: 10 },
+  { name: 'Фиолетовый', color: '#df79ee', radius: 42, points: 40 },
+  { name: 'Красный', color: '#ff4b59', radius: 49, points: 90 },
+  { name: 'Оранжевый', color: '#ffa267', radius: 61, points: 160 },
+  { name: 'Жёлтый', color: '#ffeb67', radius: 71, points: 250 },
+  { name: 'Облачко', color: '#ffffff', radius: 84, points: 360 },
+  { name: 'Ночь', color: '#454261', radius: 97, points: 490 },
+  { name: 'Планета', color: '#51b9f4', radius: 110, points: 640 },
+  { name: 'Солнце', color: '#ffc34e', radius: 124, points: 810 },
+  { name: 'Космос', color: '#9b7fe9', radius: 139, points: 1000 },
 ];
 export const WIDTH = 500;
-export const HEIGHT = 650;
+export const HEIGHT = 1000;
+export const DROP_Y = 292;
 export const STEP = 1000 / 120;
 const clamp = (v, a, b) => Math.max(a, Math.min(v, b));
 
@@ -22,7 +25,8 @@ export class MergeGame {
     this.random = random;
     this.onEvent = onEvent;
     this.engine = Matter.Engine.create({ enableSleeping: true, positionIterations: 10, velocityIterations: 8 });
-    this.engine.gravity.y = 1.35;
+    // Measured from the supplied 30 fps recording: ~1.6s from release to floor.
+    this.engine.gravity.y = .43;
     this.reset();
   }
 
@@ -36,6 +40,7 @@ export class MergeGame {
     this.drops = 0;
     this.merges = 0;
     this.combo = 0;
+    this.comboPoints = 0;
     this.lastMerge = -10000;
     this.maxTier = 0;
     this.current = this.roll();
@@ -44,7 +49,7 @@ export class MergeGame {
     this.cooldown = 0;
     this.danger = 0;
     this.state = 'playing';
-    this.powers = { swap: 3, shake: 3, sniper: 3 };
+    this.powers = { swap: 3, shake: 3, lift: 3, sniper: 3 };
     this.buildCup();
   }
 
@@ -54,8 +59,8 @@ export class MergeGame {
   }
 
   get cup() {
-    const growth = Math.max(0, this.maxTier - 3);
-    return { left: 65 - growth * 3, right: 435 + growth * 3, top: 292 - growth * 8, bottom: 580, inset: 45 };
+    const growth = Math.max(0, this.maxTier - 4);
+    return { left: 84 - growth * 5, right: 416 + growth * 5, top: 582 - growth * 10, bottom: 783, inset: 38 };
   }
 
   buildCup() {
@@ -63,7 +68,7 @@ export class MergeGame {
     this.walls.forEach(b => Composite.remove(this.engine.world, b));
     const c = this.cup;
     const wall = (x1, y1, x2, y2) => Bodies.rectangle((x1+x2)/2, (y1+y2)/2, Math.hypot(x2-x1,y2-y1)+12, 15,
-      { isStatic: true, angle: Math.atan2(y2-y1,x2-x1), friction: .35, restitution: .12, label: 'cup' });
+      { isStatic: true, angle: Math.atan2(y2-y1,x2-x1), friction: .22, restitution: .08, label: 'cup' });
     this.walls = [wall(c.left,c.top,c.left+c.inset,c.bottom),
       wall(c.right,c.top,c.right-c.inset,c.bottom),
       wall(c.left+c.inset,c.bottom,c.right-c.inset,c.bottom)];
@@ -78,11 +83,12 @@ export class MergeGame {
   addBall(tier, x, y, options = {}) {
     // Consistent, symmetric geometry prevents tiny balls gaining sideways spin on a flat floor.
     const body = this.M.Bodies.polygon(x, y, 32, BALLS[tier].radius, {
-      restitution: .25, friction: .3, frictionStatic: .65, frictionAir: .003,
-      density: .0014, slop: .02, sleepThreshold: 70, label: 'ball',
+      restitution: .13-tier*.006, friction: .12, frictionStatic: .38, frictionAir: .003,
+      density: .0014, slop: .025, sleepThreshold: 100, label: 'ball',
     });
     body.circleRadius = BALLS[tier].radius;
     body.plugin = { tier, born: this.time, entered: false, dangerTime: 0, ...options };
+    body.plugin.gel = createGel(body,BALLS[tier].radius);
     this.M.Composite.add(this.engine.world, body);
     this.balls.push(body);
     return body;
@@ -91,13 +97,12 @@ export class MergeGame {
   drop() {
     if (this.state !== 'playing' || this.cooldown > 0) return false;
     this.setAim(this.aim);
-    const ball = this.addBall(this.current, this.aim, 113);
-    this.M.Body.setVelocity(ball, { x: 0, y: .8 });
+    const ball = this.addBall(this.current, this.aim, DROP_Y);
+    this.M.Body.setVelocity(ball, { x: 0, y: 0 });
     this.current = this.next;
     this.next = this.roll();
     this.drops++;
-    this.combo = 0;
-    this.cooldown = 380;
+    this.cooldown = 850;
     this.onEvent({ type: 'drop' });
     return true;
   }
@@ -110,29 +115,34 @@ export class MergeGame {
   merge(a, b) {
     const tier = a.plugin.tier + 1;
     const x = (a.position.x + b.position.x) / 2, y = (a.position.y + b.position.y) / 2;
-    const velocity = { x: (a.velocity.x+b.velocity.x)*.4, y: Math.min(0,(a.velocity.y+b.velocity.y)*.3)-.6 };
+    const mass=a.mass+b.mass;
+    const velocity = { x: (a.velocity.x*a.mass+b.velocity.x*b.mass)/mass*.85,
+      y: (a.velocity.y*a.mass+b.velocity.y*b.mass)/mass*.6-.35 };
     this.removeBall(a);
     this.removeBall(b);
     if (tier < BALLS.length) {
-      const r = BALLS[tier].radius, c = this.cup;
-      const newBall = this.addBall(tier, clamp(x, c.left+c.inset+r+8, c.right-c.inset-r-8), Math.min(y,c.bottom-r-8));
+      // Spawn at the actual contact midpoint; never teleport a merge to the cup centre.
+      const newBall = this.addBall(tier, x, y);
       this.M.Body.setVelocity(newBall, velocity);
     }
     this.combo = this.time - this.lastMerge < 1800 ? this.combo + 1 : 1;
+    if(this.combo===1)this.comboPoints=0;
     this.lastMerge = this.time;
-    const multiplier = Math.min(this.combo, 5);
-    const points = (BALLS[tier]?.points ?? 250) * multiplier;
+    // The recording shows +10, +40, +90, +160: 10 × resulting tier².
+    const points = BALLS[tier]?.points ?? 1210;
+    this.comboPoints+=points;
     this.score += points;
     this.merges++;
     const discovered = Math.min(tier, BALLS.length - 1) > this.maxTier;
     if (discovered) { this.maxTier = tier; this.buildCup(); }
-    this.onEvent({ type: 'merge', tier, x, y, points, combo: multiplier, discovered });
+    this.onEvent({ type: 'merge', tier, x, y, points, combo: this.combo, comboPoints:this.comboPoints, discovered });
   }
 
   step(dt = STEP) {
     if (this.state !== 'playing') return;
     this.time += dt;
     this.cooldown = Math.max(0, this.cooldown-dt);
+    prepareGel(this.balls);
     this.M.Engine.update(this.engine, dt);
     // A body may participate in only one merge per physics step.
     const merged = new Set();
@@ -143,6 +153,7 @@ export class MergeGame {
       merged.add(a.id); merged.add(b.id);
       this.merge(a,b);
     }
+    updateGel(this.M,this.balls,this.engine.pairs.list,dt);
     this.checkOverflow(dt);
   }
 
@@ -150,12 +161,14 @@ export class MergeGame {
     const c = this.cup;
     this.danger = 0;
     for (const b of this.balls) {
-      const { x, y } = b.position, r = BALLS[b.plugin.tier].radius;
-      if (y-r > c.top) b.plugin.entered = true;
-      const outside = x+r < c.left-10 || x-r > c.right+10 || y-r > c.bottom+40;
-      const above = y-r < c.top-5;
-      const mature = this.time-b.plugin.born > 1900;
-      if (outside || (above && mature)) b.plugin.dangerTime += dt;
+      if (b.bounds.min.y > c.top) b.plugin.entered = true;
+      const outside = b.bounds.max.x < c.left-10 || b.bounds.min.x > c.right+10 || b.bounds.min.y > c.bottom+40;
+      // In the reference, a ball can protrude above the lip while still supported.
+      // Only a fully stranded ball, or a ball that escapes sideways, ends the run.
+      const above = b.bounds.max.y < c.top-8 && Math.abs(b.velocity.y)<.7;
+      const mature = this.time-b.plugin.born > 3000;
+      if (outside) b.plugin.dangerTime += dt*12;
+      else if (above && mature) b.plugin.dangerTime += dt;
       else b.plugin.dangerTime = Math.max(0,b.plugin.dangerTime-dt*3);
       this.danger = Math.max(this.danger, b.plugin.dangerTime / 2200);
     }
@@ -174,6 +187,9 @@ export class MergeGame {
         this.M.Sleeping.set(b,false);
         this.M.Body.setVelocity(b,{ x: (250-b.position.x)*.015+(this.random()-.5)*3.5, y: -3-this.random()*2.5 });
       });
+    } else if (kind === 'lift') {
+      if(!this.balls.length)return false;
+      this.balls.forEach(b=>{this.M.Sleeping.set(b,false);this.M.Body.setVelocity(b,{x:(250-b.position.x)*.006,y:-5.5});});
     } else if (kind === 'sniper') {
       if (!this.balls.includes(target)) return false;
       this.removeBall(target);
@@ -192,7 +208,7 @@ export class MergeGame {
   }
 
   snapshot() {
-    return { version: 1, score: this.score, drops: this.drops, merges: this.merges,
+    return { version: 2, score: this.score, drops: this.drops, merges: this.merges,
       maxTier: this.maxTier, current: this.current, next: this.next, aim: this.aim,
       powers: { ...this.powers }, state: this.state, cooldown: this.cooldown,
       balls: this.balls.map(b => ({ tier: b.plugin.tier, x: b.position.x, y: b.position.y,
@@ -203,20 +219,21 @@ export class MergeGame {
   restore(s) {
     const number = (v,min,max) => Number.isFinite(v) && v >= min && v <= max;
     const tier = v => Number.isInteger(v) && number(v,0,10);
-    if (!s || s.version !== 1 || s.state !== 'playing' || !Array.isArray(s.balls) || s.balls.length > 300
+    if (!s || ![1,2].includes(s.version) || s.state !== 'playing' || !Array.isArray(s.balls) || s.balls.length > 300
       || !tier(s.maxTier) || !tier(s.current) || !tier(s.next) || !number(s.score,0,1e12)
       || !number(s.drops,0,1e9) || !number(s.merges,0,1e9) || !number(s.aim,0,WIDTH)
-      || !number(s.cooldown,0,380)
+      || !number(s.cooldown,0,1500)
       || !['swap','shake','sniper'].every(k=>Number.isInteger(s.powers?.[k]) && number(s.powers[k],0,3))
       || !s.balls.every(b=>tier(b.tier) && number(b.x,-500,1000) && number(b.y,-500,1200)
         && number(b.vx,-100,100) && number(b.vy,-100,100) && number(b.angle,-1e9,1e9)
         && number(b.angularVelocity,-100,100) && number(b.age,0,1e12) && number(b.dangerTime,0,2300))) return false;
     this.reset();
     for (const key of ['score','drops','merges','maxTier','current','next','aim','cooldown']) this[key] = s[key];
-    this.powers = { ...s.powers };
+    this.powers = { ...s.powers, lift:number(s.powers.lift,0,3)?s.powers.lift:3 };
     this.buildCup();
     for (const b of s.balls) {
-      const body = this.addBall(b.tier,b.x,b.y,{ born: -b.age, entered: !!b.entered, dangerTime: b.dangerTime });
+      const y=s.version===1?this.cup.bottom-(580-b.y)*.8:b.y;
+      const body = this.addBall(b.tier,b.x,y,{ born: -b.age, entered: !!b.entered, dangerTime: b.dangerTime });
       this.M.Body.setVelocity(body,{x:b.vx,y:b.vy});
       this.M.Body.setAngle(body,b.angle);
       this.M.Body.setAngularVelocity(body,b.angularVelocity);
