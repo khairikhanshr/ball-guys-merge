@@ -221,3 +221,39 @@ test('mixed large soft balls remain stable under sustained stack pressure',()=>{
   assert.equal(g.state,'playing');
   for(const b of g.balls){assert.ok(Number.isFinite(b.position.x));assert.ok(b.speed<.2);assert.ok(b.bounds.max.y<g.cup.bottom+2);}
 });
+
+test('removing a resting support lets the sleeping ball above it fall to the floor',()=>{
+  const g=make(),support=g.addBall(5,250,690),top=g.addBall(1,250,570);
+  advance(g,10000);
+  assert.equal(top.isSleeping,true);
+  const before=top.position.y;
+  assert.equal(g.usePower('sniper',support),true);advance(g,4000);
+  assert.ok(top.position.y>before+100,'a removed support must not leave a suspended ball');
+  assert.ok(top.bounds.max.y>g.cup.bottom-10);
+  assert.equal(g.state,'playing');
+});
+
+test('a soft landing absorbs impact instead of bouncing the centre back up',()=>{
+  for(const tier of [0,1,4,6]){
+    const g=make();g.maxTier=Math.max(3,tier);g.buildCup();
+    const ball=g.addBall(tier,250,292);let contacted=false,upwardSpeed=0;
+    for(let i=0;i<6000/STEP;i++){
+      g.step();
+      contacted ||= g.engine.pairs.list.some(p=>p.isActive&&(p.bodyA===ball||p.bodyB===ball));
+      if(contacted)upwardSpeed=Math.max(upwardSpeed,-ball.velocity.y);
+    }
+    assert.ok(upwardSpeed<.3,`tier ${tier} should absorb the impact`);
+    assert.ok(ball.speed<.1);
+  }
+});
+
+test('a settled stack falls into the space left by a supporting merge',()=>{
+  const g=make();g.maxTier=8;g.buildCup();
+  // Hold the matching pair apart from automatic merging until the stack sleeps.
+  const a=g.addBall(5,250,700,{born:1e6}),b=g.addBall(5,250,565,{born:1e6});
+  const top=g.addBall(1,250,460);advance(g,10000);
+  assert.equal(top.isSleeping,true);const before=top.position.y;
+  g.merge(a,b);advance(g,5000);
+  assert.ok(top.position.y>before+80,'the top ball must settle onto the merged support');
+  assert.equal(g.state,'playing');assert.ok(top.speed<.1);
+});

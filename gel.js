@@ -24,10 +24,11 @@ export function updateGel(Matter,balls,pairs,dt) {
   }
 
   function contact(body,other,nx,ny){
+    if(other.label==='ball'&&!living.has(other))return;
     const g=body.plugin.gel,otherGel=other.plugin.gel;
     const impact=Math.max(0,(g.vx-(otherGel?.vx||0))*nx+(g.vy-(otherGel?.vy||0))*ny);
     const load=other.isStatic?1:Math.min(4,other.mass/body.mass);
-    const pressure=clamp(.045+g.radius*.0017+load*.038+impact*.016,0,.42);
+    const pressure=clamp(.055+g.radius*.0022+load*.05+impact*.016,0,.46);
     g.contacts.push({nx,ny,pressure,impact});
   }
 
@@ -49,9 +50,9 @@ export function updateGel(Matter,balls,pairs,dt) {
           g.speeds[i]-=Math.min(15,c.impact*1.45)*axial**2;
         }
       }
-      const target=1-Math.min(.44,dent);
-      g.speeds[i]+=(target-g.radii[i])*(190/(1+g.radius*.004))*h;
-      g.speeds[i]*=Math.exp(-10*h);
+      const target=1-Math.min(.48,dent);
+      g.speeds[i]+=(target-g.radii[i])*(145/(1+g.radius*.004))*h;
+      g.speeds[i]*=Math.exp(-14*h);
       g.radii[i]=clamp(g.radii[i]+g.speeds[i]*h,.40,1.24);
       if(!g.last||Math.abs(g.radii[i]-g.last[i])>.0004)changed=true;
     }

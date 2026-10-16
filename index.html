@@ -19,6 +19,7 @@
 <body>
   <svg class="svg-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
     <symbol id="i-sound" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5Zm4 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13M9 8l11-2"/><ellipse cx="6" cy="18" rx="3" ry="2.5"/><ellipse cx="17" cy="16" rx="3" ry="2.5"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
     <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 1 7M4 4v6h6"/></symbol>
     <symbol id="i-swap" viewBox="0 0 24 24"><path d="M21 6H5l4-4M3 18h16l-4 4M5 6l4 4m10 8-4-4"/></symbol>
@@ -30,7 +31,7 @@
   <main class="game-card" aria-label="Ball Guys — наполни стакан">
     <div class="stage-wrap"><canvas id="game" width="1000" height="2000" tabindex="0" role="application" aria-label="Игровое поле. Стрелки — прицелиться, пробел — бросить. На телефоне коснись и отпусти."></canvas></div>
     <div class="scorebar outlined"><div>Счёт: <strong id="score">0</strong></div><div>Рекорд: <strong id="best">0</strong></div><div id="last-result" class="last-result" hidden>Прошлая: <strong id="last-score">0</strong></div></div>
-    <div class="game-toolbar"><span class="no-ads">Без рекламы</span><div class="toolbar-actions"><button id="sound" class="icon-button" aria-label="Включить звук" aria-pressed="false"><svg><use href="#i-sound"/></svg><span class="mute-slash"></span></button><button id="pause" class="icon-button" aria-label="Пауза"><svg><use href="#i-pause"/></svg></button><button id="restart" class="icon-button" aria-label="Начать заново"><svg><use href="#i-reset"/></svg></button></div></div>
+    <div class="game-toolbar"><span class="no-ads">Без рекламы</span><div class="toolbar-actions"><button id="music" class="icon-button" aria-label="Выключить музыку" title="Фоновая музыка" aria-pressed="true"><svg><use href="#i-music"/></svg><span class="mute-slash" hidden></span></button><button id="sound" class="icon-button" aria-label="Включить звуковые эффекты" title="Звуковые эффекты" aria-pressed="false"><svg><use href="#i-sound"/></svg><span class="mute-slash"></span></button><button id="pause" class="icon-button" aria-label="Пауза"><svg><use href="#i-pause"/></svg></button><button id="restart" class="icon-button" aria-label="Начать заново"><svg><use href="#i-reset"/></svg></button></div></div>
     <button id="install" class="install-button blue-tile"><svg><use href="#i-install"/></svg><span class="outlined">На экран Домой</span></button>
     <div class="next blue-tile"><canvas id="next-ball" width="108" height="108" aria-label="Следующий шарик"></canvas><span class="outlined">Следующий</span></div>
     <div id="combo" class="combo outlined" hidden></div>

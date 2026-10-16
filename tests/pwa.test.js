@@ -30,5 +30,5 @@ test('offline cache includes every local module, stylesheet, manifest and instal
   const files=worker.match(/const FILES = (\[[^;]+\]);/)[1];
   const cached=JSON.parse(files.replaceAll("'",'"'));
   for(const path of cached)assert.ok(fs.existsSync(new URL(path,root)),`${path} is missing`);
-  for(const file of ['game.js','core.js','gel.js','discovery.js','style.css','manifest.webmanifest','assets/apple-touch-icon.png'])assert.ok(cached.includes(`./${file}`),`${file} is not cached`);
+  for(const file of ['game.js','core.js','gel.js','discovery.js','audio.js','style.css','manifest.webmanifest','assets/apple-touch-icon.png'])assert.ok(cached.includes(`./${file}`),`${file} is not cached`);
 });

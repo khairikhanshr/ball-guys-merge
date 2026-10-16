@@ -69,11 +69,12 @@ export class MergeGame {
     this.walls.forEach(b => Composite.remove(this.engine.world, b));
     const c = this.cup;
     const wall = (x1, y1, x2, y2) => Bodies.rectangle((x1+x2)/2, (y1+y2)/2, Math.hypot(x2-x1,y2-y1)+12, WALL_THICKNESS,
-      { isStatic: true, angle: Math.atan2(y2-y1,x2-x1), friction: .22, restitution: .08, label: 'cup' });
+      { isStatic: true, angle: Math.atan2(y2-y1,x2-x1), friction: .08, restitution: .02, label: 'cup' });
     this.walls = [wall(c.left,c.top,c.left+c.inset,c.bottom),
       wall(c.right,c.top,c.right-c.inset,c.bottom),
       wall(c.left+c.inset,c.bottom,c.right-c.inset,c.bottom)];
     Composite.add(this.engine.world, this.walls);
+    this.wakeStack();
   }
 
   setAim(x) {
@@ -84,7 +85,7 @@ export class MergeGame {
   addBall(tier, x, y, options = {}) {
     // Consistent, symmetric geometry prevents tiny balls gaining sideways spin on a flat floor.
     const body = this.M.Bodies.polygon(x, y, 32, BALLS[tier].radius, {
-      restitution: .13-tier*.006, friction: .12, frictionStatic: .38, frictionAir: .003,
+      restitution: .025, friction: .055, frictionStatic: .16, frictionAir: .003,
       density: .0014, slop: .025, sleepThreshold: 100, label: 'ball',
     });
     body.circleRadius = BALLS[tier].radius;
@@ -111,6 +112,13 @@ export class MergeGame {
   removeBall(ball) {
     this.M.Composite.remove(this.engine.world, ball);
     this.balls = this.balls.filter(b => b !== ball);
+    this.wakeStack();
+  }
+
+  wakeStack() {
+    // Sleeping bodies do not feel gravity when a supporting body disappears.
+    // Re-evaluate the whole pile after a merge, removal or cup expansion.
+    for (const ball of this.balls) this.M.Sleeping.set(ball,false);
   }
 
   merge(a, b) {
@@ -118,7 +126,7 @@ export class MergeGame {
     const x = (a.position.x + b.position.x) / 2, y = (a.position.y + b.position.y) / 2;
     const mass=a.mass+b.mass;
     const velocity = { x: (a.velocity.x*a.mass+b.velocity.x*b.mass)/mass*.85,
-      y: (a.velocity.y*a.mass+b.velocity.y*b.mass)/mass*.6-.35 };
+      y: (a.velocity.y*a.mass+b.velocity.y*b.mass)/mass*.6 };
     this.removeBall(a);
     this.removeBall(b);
     if (tier < BALLS.length) {

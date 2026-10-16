@@ -1,5 +1,6 @@
 import { MergeGame, BALLS, WIDTH, HEIGHT, STEP, DROP_Y } from './core.js';
 import { DiscoveryIntro, drawDiscovery } from './discovery.js';
+import { GameAudio } from './audio.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game'), ctx = canvas.getContext('2d');
@@ -16,8 +17,10 @@ const stats = {
   lastScore: Number.isFinite(saved?.lastScore) && saved.lastScore >= 0 ? saved.lastScore : null,
   discovered: Number.isInteger(saved?.discovered) ? Math.max(3,Math.min(10,saved.discovered)) : 3,
   sound: saved?.sound === true,
+  music: saved?.music !== false,
 };
-let paused = false, targeting = false, pointer = null, audioContext, lastToast = 0;
+const audio=new GameAudio({music:stats.music,effects:stats.sound});
+let paused = false, targeting = false, pointer = null, lastToast = 0;
 let installPrompt = null;
 let particles = [], labels = [], lastFrame = performance.now(), accumulator = 0, lastSave = 0, uiDirty = true;
 const game = new MergeGame(window.Matter, { onEvent });
@@ -36,27 +39,14 @@ function save() {
 }
 
 function unlockAudio() {
-  if (!stats.sound) return;
-  try {
-    audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
-    if (audioContext.state === 'suspended') audioContext.resume().catch(()=>{});
-  } catch { /* Sound is optional on browsers without Web Audio. */ }
+  audio.unlock();
 }
 
 function sound(kind, tier=0) {
-  if (!stats.sound || !audioContext || audioContext.state !== 'running') return;
-  const now = audioContext.currentTime;
-  const osc = audioContext.createOscillator(), gain = audioContext.createGain();
-  osc.connect(gain); gain.connect(audioContext.destination);
-  osc.type = 'sine';
-  const frequency = kind === 'drop' ? 220 : kind === 'finished' ? 120 : 370 + tier * 54;
-  osc.frequency.setValueAtTime(frequency, now);
-  osc.frequency.exponentialRampToValueAtTime(frequency*(kind==='finished'?.45:1.6),now+.12);
-  gain.gain.setValueAtTime(.0001,now);
-  gain.gain.exponentialRampToValueAtTime(.075,now+.01);
-  gain.gain.exponentialRampToValueAtTime(.0001,now+.2);
-  osc.start(now); osc.stop(now+.22);
+  audio.effect(kind,tier);
 }
+
+function syncAudio() {audio.setActive(!document.hidden&&!paused&&game.state==='playing');}
 
 function toast(text) {
   $('toast').textContent = text;
@@ -229,8 +219,11 @@ function updateUI() {
   $('next-ball').setAttribute('aria-label',`Следующий шарик: ${BALLS[game.next].name}`);
   $('first-hint').hidden=game.drops>0;
   $('sound').setAttribute('aria-pressed',String(stats.sound));
-  $('sound').setAttribute('aria-label',stats.sound?'Выключить звук':'Включить звук');
+  $('sound').setAttribute('aria-label',stats.sound?'Выключить звуковые эффекты':'Включить звуковые эффекты');
   $('sound').querySelector('.mute-slash').hidden=stats.sound;
+  $('music').setAttribute('aria-pressed',String(stats.music));
+  $('music').setAttribute('aria-label',stats.music?'Выключить музыку':'Включить музыку');
+  $('music').querySelector('.mute-slash').hidden=stats.music;
   uiDirty=false;
 }
 
@@ -252,7 +245,7 @@ function setTarget(value) {
 }
 
 function showModal(title,body,actions,icon='✦') {
-  paused=true;pointer=null;save();
+  paused=true;pointer=null;syncAudio();save();
   $('modal-title').textContent=title;$('modal-body').innerHTML=body;$('modal-icon').textContent=icon;
   $('modal-actions').replaceChildren();
   for(const action of actions){
@@ -266,6 +259,7 @@ function showModal(title,body,actions,icon='✦') {
 
 function newGame() {
   game.reset();setTarget(false);particles=[];labels=[];discovery.reset();syncDiscovery();paused=false;accumulator=0;
+  syncAudio();unlockAudio();
   uiDirty=true;save();canvas.focus({preventScroll:true});
 }
 
@@ -299,14 +293,14 @@ matchMedia('(display-mode: standalone)').addEventListener('change',syncInstallBu
 $('install').addEventListener('click',async()=>{
   if(!installPrompt){showInstall();return;}
   const prompt=installPrompt;installPrompt=null;
-  paused=true;pointer=null;save();
+  paused=true;pointer=null;syncAudio();save();
   try{await prompt.prompt();await prompt.userChoice;}
   catch{showInstall();}
-  finally{paused=$('modal').open;lastFrame=performance.now();accumulator=0;syncInstallButton();}
+  finally{paused=$('modal').open;lastFrame=performance.now();accumulator=0;syncInstallButton();syncAudio();}
 });
 syncInstallButton();
 
-$('modal').addEventListener('close',()=>{paused=$('modal').open;lastFrame=performance.now();accumulator=0;if(!paused)canvas.focus({preventScroll:true});});
+$('modal').addEventListener('close',()=>{paused=$('modal').open;lastFrame=performance.now();accumulator=0;syncAudio();if(!paused)canvas.focus({preventScroll:true});});
 $('modal-close').addEventListener('click',()=>{if(game.state!=='playing')newGame();$('modal').close();});
 $('modal').addEventListener('cancel',()=>{if(game.state!=='playing')newGame();});
 $('help').addEventListener('click',showHelp);
@@ -315,7 +309,12 @@ $('restart').addEventListener('click',()=>{
   if(!game.drops){newGame();return;}
   showModal('Начать с чистого стакана?','Текущие очки будут потеряны.<br>Твой рекорд останется.',[{label:'Начать заново',run:newGame},{label:'Продолжить эту партию',secondary:true}],'↻');
 });
-$('sound').addEventListener('click',()=>{stats.sound=!stats.sound;unlockAudio();sound('merge',3);uiDirty=true;save();});
+$('sound').addEventListener('click',()=>{stats.sound=!stats.sound;audio.setPreferences({effects:stats.sound});unlockAudio();sound('merge',3);uiDirty=true;save();});
+$('music').addEventListener('click',()=>{stats.music=!stats.music;audio.setPreferences({music:stats.music});unlockAudio();uiDirty=true;save();toast(stats.music?'Музыка включена':'Музыка выключена');});
+document.addEventListener('pointerdown',unlockAudio,{capture:true});
+document.addEventListener('keydown',unlockAudio,{capture:true});
+// Suppress selection and the long-press menu without cancelling game gestures.
+for(const event of ['selectstart','contextmenu','dragstart'])document.addEventListener(event,e=>e.preventDefault());
 for(const kind of ['swap','shake','lift'])$(kind).addEventListener('click',()=>{if(paused||discovery.current)return;unlockAudio();setTarget(false);if(game.usePower(kind)){uiDirty=true;save();toast({swap:'Шарики поменялись!',shake:'Встряхнули!',lift:'Вверх!'}[kind]);}});
 $('sniper').addEventListener('click',()=>{if(!paused&&!discovery.current&&game.powers.sniper&&game.balls.length)setTarget(!targeting);});
 $('cancel-target').addEventListener('click',()=>setTarget(false));
@@ -355,8 +354,10 @@ document.addEventListener('keydown',event=>{
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){save();pointer=null;if(game.state==='playing'&&game.drops&&!$('modal').open)showPause();}
   else{lastFrame=performance.now();accumulator=0;}
+  syncAudio();
 });
-window.addEventListener('pagehide',save);
+window.addEventListener('pagehide',()=>{save();audio.setActive(false);});
+window.addEventListener('pageshow',syncAudio);
 
 function resize() {
   const rect=canvas.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio||1,2);
