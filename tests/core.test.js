@@ -257,3 +257,36 @@ test('a settled stack falls into the space left by a supporting merge',()=>{
   assert.ok(top.position.y>before+80,'the top ball must settle onto the merged support');
   assert.equal(g.state,'playing');assert.ok(top.speed<.1);
 });
+
+test('a light ball deforms more than a heavy ball and transfers momentum according to mass',()=>{
+  for(const tier of [4,6,8,10]){
+    const g=make();g.engine.gravity.y=0;
+    const big=g.addBall(tier,250,380);
+    const small=g.addBall(0,250-BALLS[tier].radius-BALLS[0].radius-5,380);
+    Matter.Body.setVelocity(small,{x:8,y:0});
+    let bigDent=0,smallDent=0,bigSpeed=0;
+    for(let i=0;i<80;i++){
+      g.step();
+      bigDent=Math.max(bigDent,1-Math.min(...big.plugin.gel.radii));
+      smallDent=Math.max(smallDent,1-Math.min(...small.plugin.gel.radii));
+      bigSpeed=Math.max(bigSpeed,big.speed);
+    }
+    assert.ok(smallDent>.15,'the light ball must still have a soft impact');
+    assert.ok(bigDent<.12&&bigDent<smallDent*.5,'a light impact must not collapse the heavy collision shape');
+    assert.ok(bigSpeed<8*small.mass/(small.mass+big.mass)*1.1,'heavy-body motion must respect the incoming momentum');
+  }
+});
+
+test('small drops do not launch large resting balls, including off-centre impacts',()=>{
+  for(const tier of [4,6,8,10])for(const offset of [0,30,65]){
+    const g=make();g.maxTier=tier;g.buildCup();
+    const big=g.addBall(tier,250,550);advance(g,6000);
+    const restY=big.position.y;
+    g.addBall(0,250+offset,292);let lift=0;
+    for(let i=0;i<4000/STEP;i++){
+      g.step();lift=Math.max(lift,restY-big.position.y);
+    }
+    assert.equal(g.state,'playing');
+    assert.ok(lift<3,`tier ${tier}, offset ${offset}: the large ball rose ${lift.toFixed(1)}px`);
+  }
+});

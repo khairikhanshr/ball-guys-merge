@@ -26,15 +26,19 @@ export function updateGel(Matter,balls,pairs,dt) {
   function contact(body,other,nx,ny){
     if(other.label==='ball'&&!living.has(other))return;
     const g=body.plugin.gel,otherGel=other.plugin.gel;
-    const impact=Math.max(0,(g.vx-(otherGel?.vx||0))*nx+(g.vy-(otherGel?.vy||0))*ny);
+    const closingSpeed=Math.max(0,(g.vx-(otherGel?.vx||0))*nx+(g.vy-(otherGel?.vy||0))*ny);
+    // Use the impulse per unit mass, matching the rigid collision solver.
+    // A light neighbour must not squash a heavy ball as if it were a wall.
+    const massShare=other.isStatic?1:other.mass/(body.mass+other.mass);
+    const impact=closingSpeed*massShare;
     const load=other.isStatic?1:Math.min(4,other.mass/body.mass);
-    const pressure=clamp(.055+g.radius*.0022+load*.05+impact*.016,0,.46);
+    const pressure=clamp((.055+g.radius*.0022)*Math.min(1,load)+load*.05+impact*.016,0,.46);
     g.contacts.push({nx,ny,pressure,impact});
   }
 
   const h=dt/1000;
   for(const b of balls){
-    if(b.isSleeping)continue;
+    if(b.isSleeping||b.isStatic)continue;
     const g=b.plugin.gel;
     let changed=false;
     for(let i=0;i<GEL_NODES;i++){
